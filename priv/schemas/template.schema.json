@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Template",
+  "description": "Definition of a reusable, named message/payload template with mustache-style placeholders.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "clients", "payload"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique name used to reference this template from a step."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional free-text description of what this template represents."
+    },
+    "clients": {
+      "type": "array",
+      "description": "Names of the registered clients this template is valid for. A step must pair this template with one of these clients.",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "payload": {
+      "description": "The message/payload content itself, with mustache-style placeholders filled in from the step's 'data' at render time. Shape is free-form: an object for structured payloads (JSON, gRPC message maps, ...), or a string for raw/text payloads.",
+      "anyOf": [{ "type": "object" }, { "type": "string" }]
+    },
+    "options": {
+      "type": "object",
+      "description": "Client configuration for sending the payload with mustache-style placeholders filled in from the step's 'data' at render time, same as payload. Shape is defined by the client itself, not by this schema."
+    }
+  },
+  "examples": [
+    {
+      "name": "order_created_v1",
+      "description": "Kafka message for OrderCreated events.",
+      "clients": ["kafka"],
+      "options": {
+        "topic": "orders.created",
+        "key": "{{order_id}}"
+      },
+      "payload": {
+        "event": "order_created",
+        "order_id": "{{order_id}}",
+        "total": "{{total}}"
+      }
+    },
+    {
+      "name": "create_order_request",
+      "description": "HTTP request to create an order.",
+      "clients": ["http"],
+      "options": {
+        "method": "POST",
+        "url": "https://shop.example.com/orders/{{order_id}}",
+        "headers": { "Authorization": "Bearer {{auth_token}}" }
+      },
+      "payload": {
+        "foo": "{{foo}}",
+        "bar": "{{bar}}"
+      }
+    },
+    {
+      "name": "heartbeat_frame_v1",
+      "description": "Raw TCP heartbeat frame: pipe-delimited fields terminated with CRLF.",
+      "clients": ["tcp"],
+      "options": {
+        "host": "gateway.example.com",
+        "port": 9000
+      },
+      "payload": "HB|{{device_id}}|{{sequence}}\r\n"
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Suite",
+  "description": "Definition of a Maestro test suite: a named collection of testcases, each an ordered list of steps and/or scenario calls. Scenarios are defined separately (see scenario.schema.json) and referenced here by name. Datasets are defined separately (see dataset.schema.json) and referenced by name from a step's dataset field. If a step's dataset (or a scenario call's dataset) names a dataset with 'rows', that step/scenario call runs once per row.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "testcases"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique, human-readable name for the suite (e.g. \"Checkout Flow\")."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional free-text description of what the suite covers."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Optional labels for filtering/grouping suites (e.g. \"smoke\", \"nightly\").",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "testcases": {
+      "type": "array",
+      "description": "Ordered list of testcases that make up this suite.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "steps"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human-readable name for the testcase (e.g. \"Add to cart\")."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional free-text description of what the testcase verifies."
+          },
+          "steps": {
+            "type": "array",
+            "description": "Ordered list of steps to execute for this testcase. Each entry is either a template-step (client + template + dataset) or a call into a reusable scenario (scenario + optional dataset).",
+            "minItems": 1,
+            "items": { "$ref": "./step.schema.json" }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "name": "Checkout Flow",
+      "description": "Verifies a logged-in user can add an item to the cart and pay successfully.",
+      "tags": ["smoke", "checkout"],
+      "testcases": [
+        {
+          "name": "Add to cart and pay",
+          "steps": [
+            {
+              "scenario": "login_and_get_token",
+              "dataset": { "username": "alice" }
+            },
+            {
+              "name": "POST /cart",
+              "client": "http",
+              "template": "add_to_cart_request",
+              "dataset": { "sku": "ABC123", "qty": 1 },
+              "assert": [
+                {
+                  "provider": "http_response",
+                  "properties": { "path": "$.total", "equals": 42 }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Login as each seeded user",
+          "steps": [
+            {
+              "scenario": "login_and_get_token",
+              "dataset": "seeded_users"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Step",
+  "description": "A single entry in a testcase's or scenario's step sequence: a template-step (client + template + dataset, optionally asserted) or a call into a reusable scenario (scenario + optional dataset). Referenced from suite.schema.json and scenario.schema.json.",
+  "type": "object",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "required": ["client", "template", "dataset"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Optional human-readable label for the step, shown in results. Defaults to \"<client>: <template>\" if omitted."
+        },
+        "client": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the registered client that sends the rendered template. Must match a client registered in the Maestro client registry at runtime, and must be listed in the template's own 'clients'."
+        },
+        "template": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of a reusable template whose placeholders are filled in with 'dataset' and sent via 'client'."
+        },
+        "dataset": {
+          "description": "Values used to fill in the template's placeholders. Either a literal inline object, or a string naming a separately-defined dataset. If the referenced dataset has 'rows' rather than 'data', this step is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
+          "oneOf": [{ "type": "object" }, { "type": "string", "minLength": 1 }]
+        },
+        "assert": {
+          "type": "array",
+          "description": "Optional checks run against this step's result after it executes (once per row, if 'dataset' iterates). Each check is dispatched to a registered assertion provider.",
+          "items": { "$ref": "#/$defs/assertion" }
+        },
+        "save": {
+          "type": "array",
+          "description": "Optional values to extract from this step's response into named state, for later steps to reference via interpolation.",
+          "items": { "$ref": "#/$defs/save_entry" }
+        }
+      }
+    },
+    {
+      "additionalProperties": false,
+      "required": ["scenario"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Optional human-readable label for this scenario call, shown in results. Defaults to the scenario name if omitted."
+        },
+        "scenario": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of a reusable scenario to run inline at this point."
+        },
+        "dataset": {
+          "description": "Input values passed to the scenario's parameters. Either a literal inline object, or a string naming a separately-defined dataset. If the referenced dataset has 'rows' rather than 'data', this scenario call is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
+          "oneOf": [{ "type": "object" }, { "type": "string", "minLength": 1 }]
+        },
+        "assert": {
+          "type": "array",
+          "description": "Optional checks run against this scenario call's result after it executes. Each check is dispatched to a registered assertion provider.",
+          "items": { "$ref": "#/$defs/assertion" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "properties"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the registered assertion provider that interprets 'properties' and performs the check (e.g. \"db\" to look up a row and validate it, \"http_response\" to check the last response's shape). Must match a provider registered in the Maestro assertion-provider registry at runtime."
+        },
+        "properties": {
+          "type": "object",
+          "description": "Configuration passed to the assertion provider. Shape is defined entirely by the provider itself, not by this schema — e.g. a 'db' provider might expect {table, where, exists}, an 'http_response' provider might expect {path, equals}."
+        }
+      }
+    },
+    "save_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "as"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path into this step's response identifying the value to extract (e.g. \"$.token\")."
+        },
+        "as": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name to store the extracted value under, referenceable in later steps via interpolation (e.g. \"{{auth_token}}\")."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "name": "POST /login",
+      "client": "http",
+      "template": "login_request",
+      "dataset": { "username": "alice", "password": "secret" },
+      "save": [
+        { "path": "$.token", "as": "auth_token" }
+      ]
+    },
+    {
+      "name": "publish order created",
+      "client": "kafka",
+      "template": "order_created_v1",
+      "dataset": { "order_id": "123", "total": 42 },
+      "assert": [
+        {
+          "provider": "db",
+          "properties": {
+            "table": "orders",
+            "where": { "id": "{{order_id}}" },
+            "exists": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "create account for each seeded user",
+      "client": "http",
+      "template": "create_account_request",
+      "dataset": "seeded_users",
+      "assert": [
+        {
+          "provider": "db",
+          "properties": {
+            "table": "accounts",
+            "where": { "username": "{{username}}" },
+            "exists": true
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "login_and_get_token",
+      "dataset": { "username": "alice" }
+    },
+    {
+      "name": "login as each seeded user",
+      "scenario": "login_and_get_token",
+      "dataset": "seeded_users"
+    }
+  ]
+}
