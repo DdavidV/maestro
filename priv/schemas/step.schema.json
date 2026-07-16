@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Step",
   "description": "A single entry in a testcase's or scenario's step sequence: a template-step (client + template + dataset, optionally asserted) or a call into a reusable scenario (scenario + optional dataset). Referenced from suite.schema.json and scenario.schema.json.",
   "type": "object",

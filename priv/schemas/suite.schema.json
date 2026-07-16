@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Suite",
   "description": "Definition of a Maestro test suite: a named collection of testcases, each an ordered list of steps and/or scenario calls. Scenarios are defined separately (see scenario.schema.json) and referenced here by name. Datasets are defined separately (see dataset.schema.json) and referenced by name from a step's dataset field. If a step's dataset (or a scenario call's dataset) names a dataset with 'rows', that step/scenario call runs once per row.",
   "type": "object",

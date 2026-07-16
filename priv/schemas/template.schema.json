@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Template",
   "description": "Definition of a reusable, named message/payload template with mustache-style placeholders.",
   "type": "object",

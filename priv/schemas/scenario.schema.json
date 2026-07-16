@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Scenario",
   "description": "Definition of a reusable step sequence that can be called by name from any testcase in any suite, avoiding duplication of common flows. A scenario's steps do not carry their own 'dataset' — the scenario is called with a single dataset (the caller's 'dataset', shallow-merged over this scenario's 'default_dataset', caller's fields winning on collision), and every step's template renders directly against that one resolved dataset.",
   "type": "object",

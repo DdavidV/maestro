@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Dataset",
   "description": "Definition of reusable test data, referenced by name instead of duplicating literal values across suites/scenarios. Supports two complementary uses: 'data' is a single named bag of values referenced from step params (e.g. {\"$dataset\": \"test_user\"}); 'rows' is a table used for data-driven iteration, referenced from a testcase's for_each so the testcase runs once per row. A dataset may define either or both.",
   "type": "object",
