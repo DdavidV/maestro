@@ -1,14 +1,14 @@
 {
   "title": "Suite",
-  "description": "Definition of a Maestro test suite: a named collection of testcases, each an ordered list of steps and/or scenario calls. Scenarios are defined separately (see scenario.schema.json) and referenced here by name. Datasets are defined separately (see dataset.schema.json) and referenced by name from a step's dataset field. If a step's dataset (or a scenario call's dataset) names a dataset with 'rows', that step/scenario call runs once per row.",
+  "description": "Definition of a Maestro test suite: a named collection of testcases, each an ordered list of steps and/or scenario calls. Scenarios are defined separately and referenced here by their file path. Datasets are defined separately and referenced by their file path from a step's dataset field. If a step's dataset (or a scenario call's dataset) names a dataset with 'rows', that step/scenario call runs once per row.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "testcases"],
+  "required": ["testcases"],
   "properties": {
     "name": {
       "type": "string",
       "minLength": 1,
-      "description": "Unique, human-readable name for the suite (e.g. \"Checkout Flow\")."
+      "description": "Optional human-readable display label for the suite (e.g. \"Checkout Flow\"), shown in results/UI. Not used to reference it — suites are referenced by their file path (or supplied ad-hoc), so this need not be unique."
     },
     "description": {
       "type": "string",

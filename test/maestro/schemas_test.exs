@@ -35,6 +35,25 @@ defmodule Maestro.SchemasTest do
       assert Enum.any?(errors, fn {message, _path} -> message =~ "testcases" end)
     end
 
+    test "accepts a suite without a name" do
+      suite = %{
+        "testcases" => [
+          %{
+            "name" => "Add to cart",
+            "steps" => [
+              %{
+                "client" => "http",
+                "template" => "add_to_cart_request",
+                "dataset" => %{"sku" => "ABC123", "qty" => 1}
+              }
+            ]
+          }
+        ]
+      }
+
+      assert Schemas.validate_suite(suite) == :ok
+    end
+
     test "rejects a suite whose step is neither a template-step nor a scenario-call" do
       suite = %{
         "name" => "Checkout Flow",
@@ -95,6 +114,15 @@ defmodule Maestro.SchemasTest do
 
     test "rejects a scenario missing steps" do
       assert {:error, _errors} = Schemas.validate_scenario(%{"name" => "login_and_get_token"})
+    end
+
+    test "accepts a scenario without a name" do
+      scenario = %{
+        "default_dataset" => %{"password" => "default-test-password"},
+        "steps" => [%{"client" => "http", "template" => "login_request"}]
+      }
+
+      assert Schemas.validate_scenario(scenario) == :ok
     end
   end
 
@@ -168,8 +196,8 @@ defmodule Maestro.SchemasTest do
       assert {:error, _errors} = Schemas.validate_dataset(%{"name" => "empty"})
     end
 
-    test "rejects a dataset missing a name" do
-      assert {:error, _errors} = Schemas.validate_dataset(%{"data" => %{"a" => 1}})
+    test "accepts a dataset without a name" do
+      assert Schemas.validate_dataset(%{"data" => %{"a" => 1}}) == :ok
     end
   end
 
@@ -193,6 +221,11 @@ defmodule Maestro.SchemasTest do
     test "rejects a template with an empty clients list" do
       template = %{"name" => "x", "clients" => [], "payload" => %{}}
       assert {:error, _errors} = Schemas.validate_template(template)
+    end
+
+    test "accepts a template without a name" do
+      template = %{"clients" => ["http"], "payload" => %{"a" => 1}}
+      assert Schemas.validate_template(template) == :ok
     end
   end
 

@@ -19,10 +19,10 @@
         "template": {
           "type": "string",
           "minLength": 1,
-          "description": "Name of a reusable template whose placeholders are filled in with 'dataset' and sent via 'client'."
+          "description": "File path of a reusable template whose placeholders are filled in with 'dataset' and sent via 'client'."
         },
         "dataset": {
-          "description": "Values used to fill in the template's placeholders. Either a literal inline object, or a string naming a separately-defined dataset. If the referenced dataset has 'rows' rather than 'data', this step is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
+          "description": "Values used to fill in the template's placeholders. Either a literal inline object, or a string giving the file path of a separately-defined dataset. If the referenced dataset has 'rows' rather than 'data', this step is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
           "oneOf": [{ "type": "object" }, { "type": "string", "minLength": 1 }]
         },
         "assert": {
@@ -48,10 +48,10 @@
         "scenario": {
           "type": "string",
           "minLength": 1,
-          "description": "Name of a reusable scenario to run inline at this point."
+          "description": "File path of a reusable scenario to run inline at this point."
         },
         "dataset": {
-          "description": "Input values passed to the scenario's parameters. Either a literal inline object, or a string naming a separately-defined dataset. If the referenced dataset has 'rows' rather than 'data', this scenario call is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
+          "description": "Input values passed to the scenario's parameters. Either a literal inline object, or a string giving the file path of a separately-defined dataset. If the referenced dataset has 'rows' rather than 'data', this scenario call is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
           "oneOf": [{ "type": "object" }, { "type": "string", "minLength": 1 }]
         },
         "assert": {

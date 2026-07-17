@@ -1,21 +1,21 @@
 {
   "title": "Scenario",
-  "description": "Definition of a reusable step sequence that can be called by name from any testcase in any suite, avoiding duplication of common flows. A scenario's steps do not carry their own 'dataset' — the scenario is called with a single dataset (the caller's 'dataset', shallow-merged over this scenario's 'default_dataset', caller's fields winning on collision), and every step's template renders directly against that one resolved dataset.",
+  "description": "Definition of a reusable step sequence that can be called by its file path from any testcase in any suite, avoiding duplication of common flows. A scenario's steps do not carry their own 'dataset' — the scenario is called with a single dataset (the caller's 'dataset', shallow-merged over this scenario's 'default_dataset', caller's fields winning on collision), and every step's template renders directly against that one resolved dataset.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "steps"],
+  "required": ["steps"],
   "properties": {
     "name": {
       "type": "string",
       "minLength": 1,
-      "description": "Unique name used to reference this scenario."
+      "description": "Optional human-readable display label for this scenario, shown in results/UI."
     },
     "description": {
       "type": "string",
       "description": "Optional free-text description of what the scenario does."
     },
     "default_dataset": {
-      "description": "Default values used to render this scenario's steps, shallow-merged with the caller's 'dataset' at call time (caller's fields win on collision). If the caller omits 'dataset' entirely, default_dataset is used as-is. Either a literal inline object, or a string naming a separately-defined dataset (see dataset.schema.json). If neither the caller's dataset nor default_dataset is present, calling this scenario is an error.",
+      "description": "Default values used to render this scenario's steps, shallow-merged with the caller's 'dataset' at call time (caller's fields win on collision). If the caller omits 'dataset' entirely, default_dataset is used as-is. Either a literal inline object, or a string giving the file path of a separately-defined dataset (see dataset.schema.json). If neither the caller's dataset nor default_dataset is present, calling this scenario is an error.",
       "oneOf": [{ "type": "object" }, { "type": "string", "minLength": 1 }]
     },
     "steps": {
@@ -41,7 +41,7 @@
               "template": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Name of a reusable template whose placeholders are filled in directly from the scenario's resolved dataset and sent via 'client'. This step does not declare its own dataset."
+                "description": "File path of a reusable template (see template.schema.json) whose placeholders are filled in directly from the scenario's resolved dataset and sent via 'client'. This step does not declare its own dataset."
               },
               "assert": {
                 "type": "array",
@@ -66,10 +66,10 @@
               "scenario": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Name of another reusable scenario to run inline at this point."
+                "description": "File path of another reusable scenario to run inline at this point."
               },
               "dataset": {
-                "description": "Input values passed to the nested scenario's parameters. Either a literal inline object, or a string naming a separately-defined dataset. Merges with the nested scenario's own default_dataset the same way a top-level call does.",
+                "description": "Input values passed to the nested scenario's parameters. Either a literal inline object, or a string giving the file path of a separately-defined dataset. Merges with the nested scenario's own default_dataset the same way a top-level call does.",
                 "oneOf": [{ "type": "object" }, { "type": "string", "minLength": 1 }]
               },
               "assert": {

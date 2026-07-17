@@ -1,14 +1,14 @@
 {
   "title": "Template",
-  "description": "Definition of a reusable, named message/payload template with mustache-style placeholders.",
+  "description": "Definition of a reusable message/payload template with mustache-style placeholders, referenced by its file path from a step.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "clients", "payload"],
+  "required": ["clients", "payload"],
   "properties": {
     "name": {
       "type": "string",
       "minLength": 1,
-      "description": "Unique name used to reference this template from a step."
+      "description": "Optional human-readable display label for this template, shown in results/UI."
     },
     "description": {
       "type": "string",
