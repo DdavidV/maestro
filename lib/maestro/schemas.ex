@@ -25,28 +25,9 @@ defmodule Maestro.Schemas do
     :ok
   end
 
-  @doc "Validates `data` against the suite schema."
-  @spec validate_suite(map) :: :ok | {:error, [validation_error]}
-  def validate_suite(data), do: validate(:suite, data)
-
-  @doc "Validates `data` against the scenario schema."
-  @spec validate_scenario(map) :: :ok | {:error, [validation_error]}
-  def validate_scenario(data), do: validate(:scenario, data)
-
-  @doc "Validates `data` against the step schema."
-  @spec validate_step(map) :: :ok | {:error, [validation_error]}
-  def validate_step(data), do: validate(:step, data)
-
-  @doc "Validates `data` against the dataset schema."
-  @spec validate_dataset(map) :: :ok | {:error, [validation_error]}
-  def validate_dataset(data), do: validate(:dataset, data)
-
-  @doc "Validates `data` against the template schema."
-  @spec validate_template(map) :: :ok | {:error, [validation_error]}
-  def validate_template(data), do: validate(:template, data)
-
+  @doc "Validates `data` against the `kind` schema."
   @spec validate(kind, map) :: :ok | {:error, [validation_error]}
-  defp validate(kind, data) do
+  def validate(kind, data) when kind in @kinds and is_map(data) do
     root =
       @persistent_term_key
       |> :persistent_term.get()
