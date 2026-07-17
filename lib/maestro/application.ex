@@ -5,7 +5,7 @@ defmodule Maestro.Application do
 
   @impl true
   def start(_type, _args) do
-    Maestro.Schemas.load!()
+    Maestro.Resources.Schemas.load!()
 
     children = [
       MaestroWeb.Telemetry,

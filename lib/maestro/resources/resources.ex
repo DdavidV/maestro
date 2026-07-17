@@ -21,7 +21,7 @@ defmodule Maestro.Resources do
   Defaults to `priv/resources` under Maestro's own `priv_dir`.
   """
 
-  alias Maestro.Schemas
+  alias Maestro.Resources.Schemas
 
   @type kind :: :suite | :scenario | :dataset | :template
   @type path :: String.t()

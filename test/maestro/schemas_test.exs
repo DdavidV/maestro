@@ -1,7 +1,7 @@
 defmodule Maestro.SchemasTest do
   use ExUnit.Case, async: true
 
-  alias Maestro.Schemas
+  alias Maestro.Resources.Schemas
 
   describe "validate/2 (:suite)" do
     test "accepts a minimal valid suite" do

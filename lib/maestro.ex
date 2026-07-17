@@ -1,9 +1,16 @@
 defmodule Maestro do
   @moduledoc """
-  Maestro keeps the contexts that define your domain
-  and business logic.
-
-  Contexts are also responsible for managing your data, regardless
-  if it comes from the database, an external API or others.
   """
+
+  @type run_id :: term() ## Not decided yet
+  @type suite_entry :: String.t() | map()
+
+  def run(_entries) do
+  end
+
+  def status(_run_id) do
+  end
+
+  def result(_run_id) do
+  end
 end

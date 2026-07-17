@@ -59,7 +59,7 @@ config :phoenix, :json_library, Jason
 # Configure ex_json_schema for validating Maestro's suite/scenario/step/dataset/template schemas
 config :ex_json_schema,
   decode_json: &Jason.decode/1,
-  remote_schema_resolver: {Maestro.Schemas, :load_and_resolve_ref}
+  remote_schema_resolver: {Maestro.Resources.Schemas, :load_and_resolve_ref}
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

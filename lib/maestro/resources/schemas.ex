@@ -1,4 +1,4 @@
-defmodule Maestro.Schemas do
+defmodule Maestro.Resources.Schemas do
   @moduledoc """
   Loads and validates the JSON Schema documents in `priv/schemas`.
 
