@@ -1,6 +1,7 @@
 defmodule Maestro.ResourcesTest do
   use ExUnit.Case, async: false
 
+  import Maestro.TestUtils
   alias Maestro.Resources
 
   setup do
@@ -24,12 +25,6 @@ defmodule Maestro.ResourcesTest do
     %{dir: dir}
   end
 
-  defp write!(dir, kind_subdir, rel_path, content) do
-    file = Path.join([dir, kind_subdir, rel_path <> ".json"])
-    File.mkdir_p!(Path.dirname(file))
-    File.write!(file, Jason.encode!(content))
-  end
-
   describe "resource_dir/0" do
     test "reads config :maestro, :resource_dir", %{dir: dir} do
       assert Resources.resource_dir() == dir
@@ -43,7 +38,7 @@ defmodule Maestro.ResourcesTest do
   end
 
   describe "fetch/2" do
-    test "returns {:ok, data} for a valid suite", %{dir: dir} do
+    test "returns {:ok, data} for a valid suite" do
       suite = %{
         "testcases" => [
           %{
@@ -52,22 +47,22 @@ defmodule Maestro.ResourcesTest do
               %{
                 "client" => "http",
                 "template" => "add_to_cart_request",
-                "dataset" => %{"sku" => "ABC123", "qty" => 1}
+                "dataset" => %{"data" => %{"sku" => "ABC123", "qty" => 1}}
               }
             ]
           }
         ]
       }
 
-      write!(dir, "suites", "checkout_flow", suite)
+      write_resource!("suites", "checkout_flow", suite)
 
       assert {:ok, data} = Resources.fetch(:suite, "checkout_flow")
       assert data["testcases"] |> hd() |> Map.fetch!("name") == "Add to cart"
     end
 
-    test "resolves nested subdirectories", %{dir: dir} do
+    test "resolves nested subdirectories" do
       dataset = %{"data" => %{"username" => "alice"}}
-      write!(dir, "datasets", "checkout/seeded_users", dataset)
+      write_resource!("datasets", "checkout/seeded_users", dataset)
 
       assert {:ok, data} = Resources.fetch(:dataset, "checkout/seeded_users")
       assert data["data"]["username"] == "alice"
@@ -93,8 +88,8 @@ defmodule Maestro.ResourcesTest do
       assert Resources.fetch(:scenario, "oops") == {:error, :not_found}
     end
 
-    test "returns {:error, {:invalid, reasons}} for a schema-invalid file", %{dir: dir} do
-      write!(dir, "datasets", "empty", %{})
+    test "returns {:error, {:invalid, reasons}} for a schema-invalid file" do
+      write_resource!("datasets", "empty", %{})
 
       assert {:error, {:invalid, reasons}} = Resources.fetch(:dataset, "empty")
       assert is_list(reasons)
@@ -111,11 +106,11 @@ defmodule Maestro.ResourcesTest do
       assert Resources.fetch(:dataset, "../escapee") == {:error, :not_found}
     end
 
-    test "an edit to a file takes effect on the next fetch, no reload needed", %{dir: dir} do
-      write!(dir, "templates", "greeting", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+    test "an edit to a file takes effect on the next fetch, no reload needed" do
+      write_resource!("templates", "greeting", %{"clients" => ["http"], "payload" => %{"a" => 1}})
       assert {:ok, %{"payload" => %{"a" => 1}}} = Resources.fetch(:template, "greeting")
 
-      write!(dir, "templates", "greeting", %{"clients" => ["http"], "payload" => %{"a" => 2}})
+      write_resource!("templates", "greeting", %{"clients" => ["http"], "payload" => %{"a" => 2}})
       assert {:ok, %{"payload" => %{"a" => 2}}} = Resources.fetch(:template, "greeting")
     end
   end

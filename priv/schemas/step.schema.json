@@ -22,8 +22,11 @@
           "description": "File path of a reusable template whose placeholders are filled in with 'dataset' and sent via 'client'."
         },
         "dataset": {
-          "description": "Values used to fill in the template's placeholders. Either a literal inline object, or a string giving the file path of a separately-defined dataset. If the referenced dataset has 'rows' rather than 'data', this step is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
-          "oneOf": [{ "type": "object" }, { "type": "string", "minLength": 1 }]
+          "description": "Values used to fill in the template's placeholders. Either an inline dataset body (see dataset.schema.json — 'data' for a single bag of values, 'rows' for a table), or a string giving the file path of a separately-defined dataset. If the resolved dataset has 'rows' rather than 'data', this step is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
+          "oneOf": [
+            { "$ref": "./dataset.schema.json#/$defs/body" },
+            { "type": "string", "minLength": 1 }
+          ]
         },
         "assert": {
           "type": "array",
@@ -51,8 +54,11 @@
           "description": "File path of a reusable scenario to run inline at this point."
         },
         "dataset": {
-          "description": "Input values passed to the scenario's parameters. Either a literal inline object, or a string giving the file path of a separately-defined dataset. If the referenced dataset has 'rows' rather than 'data', this scenario call is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
-          "oneOf": [{ "type": "object" }, { "type": "string", "minLength": 1 }]
+          "description": "Input values passed to the scenario's parameters. Either an inline dataset body (see dataset.schema.json), or a string giving the file path of a separately-defined dataset. If the resolved dataset has 'rows' rather than 'data', this scenario call is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
+          "oneOf": [
+            { "$ref": "./dataset.schema.json#/$defs/body" },
+            { "type": "string", "minLength": 1 }
+          ]
         },
         "assert": {
           "type": "array",
@@ -102,7 +108,7 @@
       "name": "POST /login",
       "client": "http",
       "template": "login_request",
-      "dataset": { "username": "alice", "password": "secret" },
+      "dataset": { "data": { "username": "alice", "password": "secret" } },
       "save": [
         { "path": "$.token", "as": "auth_token" }
       ]
@@ -111,7 +117,7 @@
       "name": "publish order created",
       "client": "kafka",
       "template": "order_created_v1",
-      "dataset": { "order_id": "123", "total": 42 },
+      "dataset": { "data": { "order_id": "123", "total": 42 } },
       "assert": [
         {
           "provider": "db",
@@ -141,7 +147,7 @@
     },
     {
       "scenario": "login_and_get_token",
-      "dataset": { "username": "alice" }
+      "dataset": { "data": { "username": "alice" } }
     },
     {
       "name": "login as each seeded user",

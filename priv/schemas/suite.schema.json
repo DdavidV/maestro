@@ -59,13 +59,13 @@
           "steps": [
             {
               "scenario": "login_and_get_token",
-              "dataset": { "username": "alice" }
+              "dataset": { "data": { "username": "alice" } }
             },
             {
               "name": "POST /cart",
               "client": "http",
               "template": "add_to_cart_request",
-              "dataset": { "sku": "ABC123", "qty": 1 },
+              "dataset": { "data": { "sku": "ABC123", "qty": 1 } },
               "assert": [
                 {
                   "provider": "http_response",

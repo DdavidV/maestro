@@ -43,21 +43,22 @@ defmodule Maestro.ResolverTest do
     write_resource!("suites", "my_suite", suite)
     write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
     write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
-    assert(
-      {:ok, %{
-        "testcases" => [
-          %{
-            "name" => "testcase 1",
-            "steps" => [
-              %{
-                "client" => "http",
-                "dataset" => %{"data" => %{"foo" => "bar"}},
-                "template" => %{"clients" => ["http"], "payload" => %{"a" => 1}}
-              }
-            ]
-          }
-        ]
-       }} = Resolver.resolve("my_suite"))
+
+    assert {:ok,
+            %{
+              "testcases" => [
+                %{
+                  "name" => "testcase 1",
+                  "steps" => [
+                    %{
+                      "client" => "http",
+                      "dataset" => %{"data" => %{"foo" => "bar"}},
+                      "template" => %{"clients" => ["http"], "payload" => %{"a" => 1}}
+                    }
+                  ]
+                }
+              ]
+            }} = Resolver.resolve("my_suite")
   end
 
   test "resolve suite reference with scenario" do
@@ -86,32 +87,292 @@ defmodule Maestro.ResolverTest do
     write_resource!("scenarios", "my_scenario", scenario)
     write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
     write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
-    assert(
-      {:ok, %{
-        "testcases" => [
+
+    assert {:ok,
             %{
-              "name" => "testcase 1",
-              "steps" => [
+              "testcases" => [
                 %{
-                  "dataset" => %{"data" => %{"foo" => "bar"}},
-                  "scenario" => %{
-                    "default_dataset" => %{"data" => %{"foo" => "bar"}},
-                    "steps" => [
-                      %{
-                        "client" => "http",
-                        "dataset" => %{"data" => %{"foo" => "bar"}},
-                        "template" => %{
-                          "clients" => ["http"],
-                          "payload" => %{"a" => 1}
-                        }
+                  "name" => "testcase 1",
+                  "steps" => [
+                    %{
+                      "dataset" => %{"data" => %{"foo" => "bar"}},
+                      "scenario" => %{
+                        "default_dataset" => %{"data" => %{"foo" => "bar"}},
+                        "steps" => [
+                          %{
+                            "client" => "http",
+                            "dataset" => %{"data" => %{"foo" => "bar"}},
+                            "template" => %{
+                              "clients" => ["http"],
+                              "payload" => %{"a" => 1}
+                            }
+                          }
+                        ]
                       }
-                    ]
-                  }
+                    }
+                  ]
                 }
               ]
-            }
-          ]
-        }} = Resolver.resolve("my_suite"))
+            }} = Resolver.resolve("my_suite")
   end
 
+  test "broadcasts default_dataset's data over the caller's rows, caller's fields winning" do
+    suite = %{
+      "testcases" => [
+        %{
+          "name" => "testcase 1",
+          "steps" => [
+            %{"scenario" => "my_scenario", "dataset" => "seeded_users"}
+          ]
+        }
+      ]
+    }
+
+    write_resource!("suites", "my_suite", suite)
+
+    write_resource!("scenarios", "my_scenario", %{
+      "default_dataset" => %{"data" => %{"password" => "default-pw"}},
+      "steps" => [%{"client" => "http", "template" => "my_template"}]
+    })
+
+    write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+
+    write_resource!("datasets", "seeded_users", %{
+      "rows" => [
+        %{"username" => "alice"},
+        %{"username" => "bob", "password" => "bobs-own-pw"}
+      ]
+    })
+
+    assert {:ok,
+            %{
+              "testcases" => [
+                %{
+                  "steps" => [
+                    %{
+                      "dataset" => %{
+                        "rows" => [
+                          %{"username" => "alice", "password" => "default-pw"},
+                          %{"username" => "bob", "password" => "bobs-own-pw"}
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }} = Resolver.resolve("my_suite")
+  end
+
+  test "rejects a scenario call where both default_dataset and the caller's dataset have rows" do
+    suite = %{
+      "testcases" => [
+        %{
+          "name" => "testcase 1",
+          "steps" => [
+            %{"scenario" => "my_scenario", "dataset" => "caller_rows"}
+          ]
+        }
+      ]
+    }
+
+    write_resource!("suites", "my_suite", suite)
+
+    write_resource!("scenarios", "my_scenario", %{
+      "default_dataset" => %{"rows" => [%{"username" => "alice"}]},
+      "steps" => [%{"client" => "http", "template" => "my_template"}]
+    })
+
+    write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+    write_resource!("datasets", "caller_rows", %{"rows" => [%{"username" => "bob"}]})
+
+    assert Resolver.resolve("my_suite") == {:error, :ambiguous_dataset_merge}
+  end
+
+  test "errors when a scenario call has no dataset, no inherited dataset, and no default_dataset" do
+    suite = %{
+      "testcases" => [
+        %{
+          "name" => "testcase 1",
+          "steps" => [%{"scenario" => "my_scenario"}]
+        }
+      ]
+    }
+
+    write_resource!("suites", "my_suite", suite)
+
+    write_resource!("scenarios", "my_scenario", %{
+      "steps" => [%{"client" => "http", "template" => "my_template"}]
+    })
+
+    write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+
+    assert Resolver.resolve("my_suite") == {:error, :no_dataset}
+  end
+
+  describe "fold_datasets/1" do
+    test "a present dataset fills in when earlier entries are all nil" do
+      caller = %{"data" => %{"username" => "alice"}}
+      assert Resolver.fold_datasets([nil, nil, caller]) == {:ok, caller}
+    end
+
+    test "every entry nil is an error" do
+      assert Resolver.fold_datasets([nil, nil, nil]) == {:error, :no_dataset}
+    end
+
+    test "later entries win on field collision" do
+      assert Resolver.fold_datasets([
+               %{"data" => %{"a" => 1, "b" => 1}},
+               nil,
+               %{"data" => %{"b" => 2}}
+             ]) == {:ok, %{"data" => %{"a" => 1, "b" => 2}}}
+    end
+  end
+
+  describe "merge_dataset/2" do
+    test "data merges into data, next's fields winning" do
+      assert Resolver.merge_dataset(%{"data" => %{"a" => 1}}, %{"data" => %{"a" => 2, "b" => 2}}) ==
+               {:ok, %{"data" => %{"a" => 2, "b" => 2}}}
+    end
+
+    test "rows broadcast previous's data, row's own fields winning" do
+      previous = %{"data" => %{"password" => "default-pw"}}
+      next = %{"rows" => [%{"username" => "alice"}, %{"username" => "bob", "password" => "own"}]}
+
+      assert Resolver.merge_dataset(previous, next) ==
+               {:ok,
+                %{
+                  "rows" => [
+                    %{"username" => "alice", "password" => "default-pw"},
+                    %{"username" => "bob", "password" => "own"}
+                  ]
+                }}
+    end
+
+    test "data broadcasts into a previous rows table, row's own fields winning" do
+      previous = %{"rows" => [%{"username" => "alice"}, %{"username" => "bob", "password" => "own"}]}
+      next = %{"data" => %{"password" => "default-pw"}}
+
+      assert Resolver.merge_dataset(previous, next) ==
+               {:ok,
+                %{
+                  "rows" => [
+                    %{"username" => "alice", "password" => "default-pw"},
+                    %{"username" => "bob", "password" => "own"}
+                  ]
+                }}
+    end
+
+    test "both sides rows is rejected" do
+      assert Resolver.merge_dataset(%{"rows" => [%{"a" => 1}]}, %{"rows" => [%{"b" => 2}]}) ==
+               {:error, :ambiguous_dataset_merge}
+    end
+
+    test "nil on either side passes the other through unchanged" do
+      present = %{"data" => %{"a" => 1}}
+      assert Resolver.merge_dataset(present, nil) == {:ok, present}
+      assert Resolver.merge_dataset(nil, present) == {:ok, present}
+      assert Resolver.merge_dataset(nil, nil) == {:ok, nil}
+    end
+  end
+
+  describe "scenario recursion guards" do
+    test "rejects a scenario that calls itself" do
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [%{"scenario" => "self_referential", "dataset" => "my_dataset"}]
+          }
+        ]
+      })
+
+      write_resource!("scenarios", "self_referential", %{
+        "steps" => [%{"scenario" => "self_referential"}]
+      })
+
+      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+
+      assert Resolver.resolve("my_suite") ==
+               {:error, {:cycle_detected, "self_referential", ["self_referential", "self_referential"]}}
+    end
+
+    test "rejects an indirect cycle across two scenarios" do
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [%{"scenario" => "scenario_a", "dataset" => "my_dataset"}]
+          }
+        ]
+      })
+
+      write_resource!("scenarios", "scenario_a", %{"steps" => [%{"scenario" => "scenario_b"}]})
+      write_resource!("scenarios", "scenario_b", %{"steps" => [%{"scenario" => "scenario_a"}]})
+      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+
+      assert Resolver.resolve("my_suite") ==
+               {:error, {:cycle_detected, "scenario_a", ["scenario_a", "scenario_b", "scenario_a"]}}
+    end
+
+    test "a deep but acyclic scenario chain hits the max depth guard" do
+      chain_length = Resolver.max_scenario_depth() + 1
+
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [%{"scenario" => "scenario_0", "dataset" => "my_dataset"}]
+          }
+        ]
+      })
+
+      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+
+      for n <- 0..(chain_length - 1) do
+        next_step =
+          if n == chain_length - 1 do
+            %{"client" => "http", "template" => "my_template"}
+          else
+            %{"scenario" => "scenario_#{n + 1}"}
+          end
+
+        write_resource!("scenarios", "scenario_#{n}", %{"steps" => [next_step]})
+      end
+
+      write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+
+      max_depth = Resolver.max_scenario_depth()
+      assert Resolver.resolve("my_suite") == {:error, {:max_depth_exceeded, max_depth}}
+    end
+
+    test "a scenario chain within the depth limit resolves normally" do
+      chain_length = 10
+
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [%{"scenario" => "scenario_0", "dataset" => "my_dataset"}]
+          }
+        ]
+      })
+
+      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+
+      for n <- 0..(chain_length - 1) do
+        next_step =
+          if n == chain_length - 1 do
+            %{"client" => "http", "template" => "my_template"}
+          else
+            %{"scenario" => "scenario_#{n + 1}"}
+          end
+
+        write_resource!("scenarios", "scenario_#{n}", %{"steps" => [next_step]})
+      end
+
+      write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+
+      assert {:ok, _resolved} = Resolver.resolve("my_suite")
+    end
+  end
 end

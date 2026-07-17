@@ -3,10 +3,7 @@
   "description": "Definition of reusable test data, referenced by its file path instead of duplicating literal values across suites/scenarios. Supports two complementary uses: 'data' is a single named bag of values referenced from step params (e.g. {\"$dataset\": \"test_user\"}); 'rows' is a table used for data-driven iteration, referenced from a testcase's for_each so the testcase runs once per row. A dataset may define either or both.",
   "type": "object",
   "additionalProperties": false,
-  "anyOf": [
-    { "required": ["data"] },
-    { "required": ["rows"] }
-  ],
+  "allOf": [{ "$ref": "#/$defs/body" }],
   "properties": {
     "name": {
       "type": "string",
@@ -17,18 +14,31 @@
       "type": "string",
       "description": "Optional free-text description of what this dataset represents."
     },
-    "data": {
+    "data": { "$ref": "#/$defs/body/properties/data" },
+    "rows": { "$ref": "#/$defs/body/properties/rows" }
+  },
+  "$defs": {
+    "body": {
       "type": "object",
-      "description": "A single named bag of values, referenced whole or by field from step.",
-      "minProperties": 1
-    },
-    "rows": {
-      "type": "array",
-      "description": "Rows of values for data-driven iteration. A testcase with matching for_each runs once per row, with each row's fields available for interpolation.",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "minProperties": 1
+      "anyOf": [
+        { "required": ["data"] },
+        { "required": ["rows"] }
+      ],
+      "properties": {
+        "data": {
+          "type": "object",
+          "description": "A single bag of values, referenced whole or by field from a step's placeholders.",
+          "minProperties": 1
+        },
+        "rows": {
+          "type": "array",
+          "description": "Rows of values for data-driven iteration. A step/scenario call whose resolved dataset has 'rows' runs once per row, with each row's fields available for interpolation.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
       }
     }
   },

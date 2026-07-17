@@ -15,8 +15,11 @@
       "description": "Optional free-text description of what the scenario does."
     },
     "default_dataset": {
-      "description": "Default values used to render this scenario's steps, shallow-merged with the caller's 'dataset' at call time (caller's fields win on collision). If the caller omits 'dataset' entirely, default_dataset is used as-is. Either a literal inline object, or a string giving the file path of a separately-defined dataset (see dataset.schema.json). If neither the caller's dataset nor default_dataset is present, calling this scenario is an error.",
-      "oneOf": [{ "type": "object" }, { "type": "string", "minLength": 1 }]
+      "description": "Default values used to render this scenario's steps, merged with the caller's 'dataset' at call time (caller's fields win on collision; see dataset.schema.json for the merge rules when either side has 'rows'). If the caller omits 'dataset' entirely, default_dataset is used as-is. Either an inline dataset body, or a string giving the file path of a separately-defined dataset. If neither the caller's dataset nor default_dataset is present, calling this scenario is an error.",
+      "oneOf": [
+        { "$ref": "./dataset.schema.json#/$defs/body" },
+        { "type": "string", "minLength": 1 }
+      ]
     },
     "steps": {
       "type": "array",
@@ -69,8 +72,11 @@
                 "description": "File path of another reusable scenario to run inline at this point."
               },
               "dataset": {
-                "description": "Input values passed to the nested scenario's parameters. Either a literal inline object, or a string giving the file path of a separately-defined dataset. Merges with the nested scenario's own default_dataset the same way a top-level call does.",
-                "oneOf": [{ "type": "object" }, { "type": "string", "minLength": 1 }]
+                "description": "Input values passed to the nested scenario's parameters. Either an inline dataset body, or a string giving the file path of a separately-defined dataset. Merges with the nested scenario's own default_dataset the same way a top-level call does.",
+                "oneOf": [
+                  { "$ref": "./dataset.schema.json#/$defs/body" },
+                  { "type": "string", "minLength": 1 }
+                ]
               },
               "assert": {
                 "type": "array",
@@ -122,7 +128,7 @@
     {
       "name": "login_and_get_token",
       "description": "Logs in as the given user and saves the returned auth token to test state as 'auth_token'.",
-      "default_dataset": { "password": "default-test-password" },
+      "default_dataset": { "data": { "password": "default-test-password" } },
       "steps": [
         {
           "name": "POST /login",

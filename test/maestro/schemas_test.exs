@@ -14,7 +14,7 @@ defmodule Maestro.SchemasTest do
               %{
                 "client" => "http",
                 "template" => "add_to_cart_request",
-                "dataset" => %{"sku" => "ABC123", "qty" => 1}
+                "dataset" => %{"data" => %{"sku" => "ABC123", "qty" => 1}}
               }
             ]
           }
@@ -44,7 +44,7 @@ defmodule Maestro.SchemasTest do
               %{
                 "client" => "http",
                 "template" => "add_to_cart_request",
-                "dataset" => %{"sku" => "ABC123", "qty" => 1}
+                "dataset" => %{"data" => %{"sku" => "ABC123", "qty" => 1}}
               }
             ]
           }
@@ -105,7 +105,7 @@ defmodule Maestro.SchemasTest do
     test "accepts a scenario step without a dataset" do
       scenario = %{
         "name" => "login_and_get_token",
-        "default_dataset" => %{"password" => "default-test-password"},
+        "default_dataset" => %{"data" => %{"password" => "default-test-password"}},
         "steps" => [%{"client" => "http", "template" => "login_request"}]
       }
 
@@ -118,7 +118,7 @@ defmodule Maestro.SchemasTest do
 
     test "accepts a scenario without a name" do
       scenario = %{
-        "default_dataset" => %{"password" => "default-test-password"},
+        "default_dataset" => %{"data" => %{"password" => "default-test-password"}},
         "steps" => [%{"client" => "http", "template" => "login_request"}]
       }
 
@@ -137,7 +137,7 @@ defmodule Maestro.SchemasTest do
       step = %{
         "client" => "kafka",
         "template" => "order_created_v1",
-        "dataset" => %{"order_id" => "1"}
+        "dataset" => %{"data" => %{"order_id" => "1"}}
       }
 
       assert Schemas.validate(:step, step) == :ok
@@ -154,7 +154,11 @@ defmodule Maestro.SchemasTest do
     end
 
     test "accepts a scenario-call step" do
-      step = %{"scenario" => "login_and_get_token", "dataset" => %{"username" => "alice"}}
+      step = %{
+        "scenario" => "login_and_get_token",
+        "dataset" => %{"data" => %{"username" => "alice"}}
+      }
+
       assert Schemas.validate(:step, step) == :ok
     end
 
