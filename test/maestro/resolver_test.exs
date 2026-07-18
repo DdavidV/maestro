@@ -185,7 +185,8 @@ defmodule Maestro.ResolverTest do
     write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
     write_resource!("datasets", "caller_rows", %{"rows" => [%{"username" => "bob"}]})
 
-    assert Resolver.resolve("my_suite") == {:error, :ambiguous_dataset_merge}
+    assert {:error, %{reason: :ambiguous_dataset_merge, path: [_ | _]}} =
+             Resolver.resolve("my_suite")
   end
 
   test "errors when a scenario call has no dataset, no inherited dataset, and no default_dataset" do
@@ -206,7 +207,7 @@ defmodule Maestro.ResolverTest do
 
     write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
 
-    assert Resolver.resolve("my_suite") == {:error, :no_dataset}
+    assert {:error, %{reason: :no_dataset, path: [_ | _]}} = Resolver.resolve("my_suite")
   end
 
   describe "fold_datasets/1" do
@@ -292,8 +293,9 @@ defmodule Maestro.ResolverTest do
 
       write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
 
-      assert Resolver.resolve("my_suite") ==
-               {:error, {:cycle_detected, "self_referential", ["self_referential", "self_referential"]}}
+      assert {:error, %{path: path, reason: reason}} = Resolver.resolve("my_suite")
+      assert reason == {:cycle_detected, "self_referential", ["self_referential", "self_referential"]}
+      assert List.last(path) == %{ref_kind: :scenario, ref_name: "self_referential"}
     end
 
     test "rejects an indirect cycle across two scenarios" do
@@ -310,8 +312,9 @@ defmodule Maestro.ResolverTest do
       write_resource!("scenarios", "scenario_b", %{"steps" => [%{"scenario" => "scenario_a"}]})
       write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
 
-      assert Resolver.resolve("my_suite") ==
-               {:error, {:cycle_detected, "scenario_a", ["scenario_a", "scenario_b", "scenario_a"]}}
+      assert {:error, %{path: path, reason: reason}} = Resolver.resolve("my_suite")
+      assert reason == {:cycle_detected, "scenario_a", ["scenario_a", "scenario_b", "scenario_a"]}
+      assert List.last(path) == %{ref_kind: :scenario, ref_name: "scenario_a"}
     end
 
     test "a deep but acyclic scenario chain hits the max depth guard" do
@@ -342,7 +345,11 @@ defmodule Maestro.ResolverTest do
       write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
 
       max_depth = Resolver.max_scenario_depth()
-      assert Resolver.resolve("my_suite") == {:error, {:max_depth_exceeded, max_depth}}
+
+      assert {:error, %{path: path, reason: {:max_depth_exceeded, ^max_depth}}} =
+               Resolver.resolve("my_suite")
+
+      assert List.last(path) == %{ref_kind: :scenario, ref_name: "scenario_#{max_depth}"}
     end
 
     test "a scenario chain within the depth limit resolves normally" do
@@ -373,6 +380,84 @@ defmodule Maestro.ResolverTest do
       write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
 
       assert {:ok, _resolved} = Resolver.resolve("my_suite")
+    end
+  end
+
+  describe "error path pinpointing" do
+    test "a missing template reference names the testcase, step, and template" do
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "Add to cart",
+            "steps" => [
+              %{
+                "name" => "POST /cart",
+                "client" => "http",
+                "template" => "does_not_exist",
+                "dataset" => %{"data" => %{"a" => 1}}
+              }
+            ]
+          }
+        ]
+      })
+
+      assert {:error, %{path: path, reason: :not_found}} = Resolver.resolve("my_suite")
+
+      assert path == [
+               %{testcase_index: 0, testcase_name: "Add to cart"},
+               %{step_index: 0, step_name: "POST /cart"},
+               %{ref_kind: :template, ref_name: "does_not_exist"}
+             ]
+    end
+
+    test "a missing dataset reference inside a scenario call names the whole chain" do
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [%{"scenario" => "my_scenario", "dataset" => "does_not_exist"}]
+          }
+        ]
+      })
+
+      write_resource!("scenarios", "my_scenario", %{
+        "steps" => [%{"client" => "http", "template" => "my_template"}]
+      })
+
+      write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+
+      assert {:error, %{path: path, reason: :not_found}} = Resolver.resolve("my_suite")
+
+      assert path == [
+               %{testcase_index: 0, testcase_name: "testcase 1"},
+               %{step_index: 0, step_name: nil},
+               %{ref_kind: :dataset, ref_name: "does_not_exist"}
+             ]
+    end
+
+    test "a schema-invalid dataset file surfaces {:invalid, reasons} at the right path" do
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [
+              %{"client" => "http", "template" => "my_template", "dataset" => "broken_dataset"}
+            ]
+          }
+        ]
+      })
+
+      write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+      write_resource!("datasets", "broken_dataset", %{})
+
+      assert {:error, %{path: path, reason: {:invalid, reasons}}} = Resolver.resolve("my_suite")
+      assert is_list(reasons)
+
+      assert path == [
+               %{testcase_index: 0, testcase_name: "testcase 1"},
+               %{step_index: 0, step_name: nil},
+               %{ref_kind: :dataset, ref_name: "broken_dataset"}
+             ]
     end
   end
 end
