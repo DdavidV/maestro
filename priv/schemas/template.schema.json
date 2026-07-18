@@ -1,9 +1,9 @@
 {
   "title": "Template",
-  "description": "Definition of a reusable message/payload template with mustache-style placeholders, referenced by its file path from a step.",
+  "description": "Definition of a reusable message/payload template with mustache-style placeholders, referenced by its file path from a step (or inlined directly in place of that path).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["clients", "payload"],
+  "allOf": [{ "$ref": "#/$defs/body" }],
   "properties": {
     "name": {
       "type": "string",
@@ -14,20 +14,31 @@
       "type": "string",
       "description": "Optional free-text description of what this template represents."
     },
-    "clients": {
-      "type": "array",
-      "description": "Names of the registered clients this template is valid for. A step must pair this template with one of these clients.",
-      "minItems": 1,
-      "items": { "type": "string", "minLength": 1 },
-      "uniqueItems": true
-    },
-    "payload": {
-      "description": "The message/payload content itself, with mustache-style placeholders filled in from the step's 'data' at render time. Shape is free-form: an object for structured payloads (JSON, gRPC message maps, ...), or a string for raw/text payloads.",
-      "anyOf": [{ "type": "object" }, { "type": "string" }]
-    },
-    "options": {
+    "clients": { "$ref": "#/$defs/body/properties/clients" },
+    "payload": { "$ref": "#/$defs/body/properties/payload" },
+    "options": { "$ref": "#/$defs/body/properties/options" }
+  },
+  "$defs": {
+    "body": {
       "type": "object",
-      "description": "Client configuration for sending the payload with mustache-style placeholders filled in from the step's 'data' at render time, same as payload. Shape is defined by the client itself, not by this schema."
+      "required": ["clients", "payload"],
+      "properties": {
+        "clients": {
+          "type": "array",
+          "description": "Names of the registered clients this template is valid for. A step must pair this template with one of these clients.",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "payload": {
+          "description": "The message/payload content itself, with mustache-style placeholders filled in from the step's 'data' at render time. Shape is free-form: an object for structured payloads (JSON, gRPC message maps, ...), or a string for raw/text payloads.",
+          "anyOf": [{ "type": "object" }, { "type": "string" }]
+        },
+        "options": {
+          "type": "object",
+          "description": "Client configuration for sending the payload with mustache-style placeholders filled in from the step's 'data' at render time, same as payload. Shape is defined by the client itself, not by this schema."
+        }
+      }
     }
   },
   "examples": [

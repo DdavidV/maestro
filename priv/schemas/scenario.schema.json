@@ -1,9 +1,9 @@
 {
   "title": "Scenario",
-  "description": "Definition of a reusable step sequence that can be called by its file path from any testcase in any suite, avoiding duplication of common flows. A scenario's steps do not carry their own 'dataset' — the scenario is called with a single dataset (the caller's 'dataset', shallow-merged over this scenario's 'default_dataset', caller's fields winning on collision), and every step's template renders directly against that one resolved dataset.",
+  "description": "Definition of a reusable step sequence that can be called by its file path from any testcase in any suite (or inlined directly in place of that path), avoiding duplication of common flows. A scenario's steps do not carry their own 'dataset' the scenario is called with a single dataset (the caller's 'dataset', shallow-merged over this scenario's 'default_dataset', caller's fields winning on collision), and every step's template renders directly against that one resolved dataset.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["steps"],
+  "allOf": [{ "$ref": "#/$defs/body" }],
   "properties": {
     "name": {
       "type": "string",
@@ -14,82 +14,94 @@
       "type": "string",
       "description": "Optional free-text description of what the scenario does."
     },
-    "default_dataset": {
-      "description": "Default values used to render this scenario's steps, merged with the caller's 'dataset' at call time (caller's fields win on collision; see dataset.schema.json for the merge rules when either side has 'rows'). If the caller omits 'dataset' entirely, default_dataset is used as-is. Either an inline dataset body, or a string giving the file path of a separately-defined dataset. If neither the caller's dataset nor default_dataset is present, calling this scenario is an error.",
-      "oneOf": [
-        { "$ref": "./dataset.schema.json#/$defs/body" },
-        { "type": "string", "minLength": 1 }
-      ]
-    },
-    "steps": {
-      "type": "array",
-      "description": "Ordered list of steps to execute for this scenario. Each entry is either a template-step (client + template, rendered against the scenario's resolved dataset — see the top-level description) or a call into another reusable scenario (scenario + optional dataset), allowing scenarios to be composed.",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "oneOf": [
-          {
-            "additionalProperties": false,
-            "required": ["client", "template"],
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Optional human-readable label for the step, shown in results. Defaults to \"<client>: <template>\" if omitted."
-              },
-              "client": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Name of the registered client that sends the rendered template. Must match a client registered in the Maestro client registry at runtime, and must be listed in the template's own 'clients'."
-              },
-              "template": {
-                "type": "string",
-                "minLength": 1,
-                "description": "File path of a reusable template (see template.schema.json) whose placeholders are filled in directly from the scenario's resolved dataset and sent via 'client'. This step does not declare its own dataset."
-              },
-              "assert": {
-                "type": "array",
-                "description": "Optional checks run against this step's result after it executes. Each check is dispatched to a registered assertion provider.",
-                "items": { "$ref": "#/$defs/assertion" }
-              },
-              "save": {
-                "type": "array",
-                "description": "Optional values to extract from this step's response into named state, for later steps to reference via interpolation.",
-                "items": { "$ref": "#/$defs/save_entry" }
-              }
-            }
-          },
-          {
-            "additionalProperties": false,
-            "required": ["scenario"],
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Optional human-readable label for this scenario call, shown in results. Defaults to the scenario name if omitted."
-              },
-              "scenario": {
-                "type": "string",
-                "minLength": 1,
-                "description": "File path of another reusable scenario to run inline at this point."
-              },
-              "dataset": {
-                "description": "Input values passed to the nested scenario's parameters. Either an inline dataset body, or a string giving the file path of a separately-defined dataset. Merges with the nested scenario's own default_dataset the same way a top-level call does.",
-                "oneOf": [
-                  { "$ref": "./dataset.schema.json#/$defs/body" },
-                  { "type": "string", "minLength": 1 }
-                ]
-              },
-              "assert": {
-                "type": "array",
-                "description": "Optional checks run against this nested scenario call's result after it executes. Each check is dispatched to a registered assertion provider.",
-                "items": { "$ref": "#/$defs/assertion" }
-              }
-            }
-          }
-        ]
-      }
-    }
+    "default_dataset": { "$ref": "#/$defs/body/properties/default_dataset" },
+    "steps": { "$ref": "#/$defs/body/properties/steps" }
   },
   "$defs": {
+    "body": {
+      "type": "object",
+      "required": ["steps"],
+      "properties": {
+        "default_dataset": {
+          "description": "Default values used to render this scenario's steps, merged with the caller's 'dataset' at call time (caller's fields win on collision). If the caller omits 'dataset' entirely, default_dataset is used as-is. Either an inline dataset body, or a string giving the file path of a separately-defined dataset. If neither the caller's dataset nor default_dataset is present, calling this scenario is an error.",
+          "oneOf": [
+            { "$ref": "./dataset.schema.json#/$defs/body" },
+            { "type": "string", "minLength": 1 }
+          ]
+        },
+        "steps": {
+          "type": "array",
+          "description": "Ordered list of steps to execute for this scenario. Each entry is either a template-step (client + template, rendered against the scenario's resolved dataset) or a call into another reusable scenario (scenario + optional dataset), allowing scenarios to be composed.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "required": ["client", "template"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Optional human-readable label for the step, shown in results. Defaults to \"<client>: <template>\" if omitted."
+                  },
+                  "client": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Name of the registered client that sends the rendered template. Must match a client registered in the Maestro client registry at runtime, and must be listed in the template's own 'clients'."
+                  },
+                  "template": {
+                    "description": "File path of a reusable template, or an inline template body, whose placeholders are filled in directly from the scenario's resolved dataset and sent via 'client'. This step does not declare its own dataset.",
+                    "oneOf": [
+                      { "$ref": "./template.schema.json#/$defs/body" },
+                      { "type": "string", "minLength": 1 }
+                    ]
+                  },
+                  "assert": {
+                    "type": "array",
+                    "description": "Optional checks run against this step's result after it executes. Each check is dispatched to a registered assertion provider.",
+                    "items": { "$ref": "#/$defs/assertion" }
+                  },
+                  "save": {
+                    "type": "array",
+                    "description": "Optional values to extract from this step's response into named state, for later steps to reference via interpolation.",
+                    "items": { "$ref": "#/$defs/save_entry" }
+                  }
+                }
+              },
+              {
+                "additionalProperties": false,
+                "required": ["scenario"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Optional human-readable label for this scenario call, shown in results. Defaults to the scenario name if omitted."
+                  },
+                  "scenario": {
+                    "description": "File path of another reusable scenario to run inline at this point, or an inline scenario body.",
+                    "oneOf": [
+                      { "$ref": "#/$defs/body" },
+                      { "type": "string", "minLength": 1 }
+                    ]
+                  },
+                  "dataset": {
+                    "description": "Input values passed to the nested scenario's parameters. Either an inline dataset body, or a string giving the file path of a separately-defined dataset. Merges with the nested scenario's own default_dataset the same way a top-level call does.",
+                    "oneOf": [
+                      { "$ref": "./dataset.schema.json#/$defs/body" },
+                      { "type": "string", "minLength": 1 }
+                    ]
+                  },
+                  "assert": {
+                    "type": "array",
+                    "description": "Optional checks run against this nested scenario call's result after it executes. Each check is dispatched to a registered assertion provider.",
+                    "items": { "$ref": "#/$defs/assertion" }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
     "assertion": {
       "type": "object",
       "additionalProperties": false,
@@ -102,7 +114,7 @@
         },
         "properties": {
           "type": "object",
-          "description": "Configuration passed to the assertion provider. Shape is defined entirely by the provider itself, not by this schema — e.g. a 'db' provider might expect {table, where, exists}, an 'http_response' provider might expect {path, equals}. May reference the scenario's resolved dataset via interpolation (e.g. \"{{order_id}}\")."
+          "description": "Configuration passed to the assertion provider. Shape is defined entirely by the provider itself, not by this schema e.g. a 'db' provider might expect {table, where, exists}, an 'http_response' provider might expect {path, equals}. May reference the scenario's resolved dataset via interpolation (e.g. \"{{order_id}}\")."
         }
       }
     },

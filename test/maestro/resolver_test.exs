@@ -460,4 +460,162 @@ defmodule Maestro.ResolverTest do
              ]
     end
   end
+
+  describe "inline template and scenario" do
+    test "an inline template needs no file at all" do
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [
+              %{
+                "client" => "http",
+                "template" => %{"clients" => ["http"], "payload" => %{"foo" => "{{foo}}"}},
+                "dataset" => %{"data" => %{"foo" => "bar"}}
+              }
+            ]
+          }
+        ]
+      })
+
+      assert {:ok,
+              %{
+                "testcases" => [
+                  %{
+                    "steps" => [
+                      %{
+                        "template" => %{"clients" => ["http"], "payload" => %{"foo" => "{{foo}}"}},
+                        "dataset" => %{"data" => %{"foo" => "bar"}}
+                      }
+                    ]
+                  }
+                ]
+              }} = Resolver.resolve("my_suite")
+    end
+
+    test "an inline scenario needs no file at all, and its inline nested template resolves too" do
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [
+              %{
+                "scenario" => %{
+                  "default_dataset" => %{"data" => %{"password" => "default-pw"}},
+                  "steps" => [
+                    %{
+                      "client" => "http",
+                      "template" => %{"clients" => ["http"], "payload" => %{"a" => 1}}
+                    }
+                  ]
+                },
+                "dataset" => %{"data" => %{"username" => "alice"}}
+              }
+            ]
+          }
+        ]
+      })
+
+      assert {:ok,
+              %{
+                "testcases" => [
+                  %{
+                    "steps" => [
+                      %{
+                        "scenario" => %{
+                          "default_dataset" => %{
+                            "data" => %{"username" => "alice", "password" => "default-pw"}
+                          },
+                          "steps" => [
+                            %{
+                              "template" => %{"clients" => ["http"], "payload" => %{"a" => 1}},
+                              "dataset" => %{
+                                "data" => %{"username" => "alice", "password" => "default-pw"}
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }} = Resolver.resolve("my_suite")
+    end
+
+    test "a named scenario calling an inline scenario still resolves, with no false cycle" do
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [%{"scenario" => "outer", "dataset" => "my_dataset"}]
+          }
+        ]
+      })
+
+      write_resource!("scenarios", "outer", %{
+        "steps" => [
+          %{
+            "scenario" => %{
+              "steps" => [%{"client" => "http", "template" => "my_template"}]
+            }
+          }
+        ]
+      })
+
+      write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+
+      assert {:ok, _resolved} = Resolver.resolve("my_suite")
+    end
+
+    test "an inline scenario referencing a missing named template still pinpoints the path" do
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [
+              %{
+                "scenario" => %{
+                  "steps" => [%{"client" => "http", "template" => "does_not_exist"}]
+                },
+                "dataset" => %{"data" => %{"a" => 1}}
+              }
+            ]
+          }
+        ]
+      })
+
+      assert {:error, %{path: path, reason: :not_found}} = Resolver.resolve("my_suite")
+
+      assert path == [
+               %{testcase_index: 0, testcase_name: "testcase 1"},
+               %{step_index: 0, step_name: nil},
+               %{step_index: 0, step_name: nil},
+               %{ref_kind: :template, ref_name: "does_not_exist"}
+             ]
+    end
+
+    test "deeply nested inline scenarios still hit the max depth guard" do
+      chain_length = Resolver.max_scenario_depth() + 1
+
+      inline_chain =
+        Enum.reduce((chain_length - 1)..0//-1, %{"client" => "http", "template" => "my_template"}, fn _n,
+                                                                                                        inner ->
+          %{"scenario" => %{"steps" => [inner]}}
+        end)
+
+      write_resource!("suites", "my_suite", %{
+        "testcases" => [
+          %{
+            "name" => "testcase 1",
+            "steps" => [Map.put(inline_chain, "dataset", %{"data" => %{"a" => 1}})]
+          }
+        ]
+      })
+
+      write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+
+      assert {:error, %{reason: {:max_depth_exceeded, _max_depth}}} = Resolver.resolve("my_suite")
+    end
+  end
 end

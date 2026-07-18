@@ -17,12 +17,14 @@
           "description": "Name of the registered client that sends the rendered template. Must match a client registered in the Maestro client registry at runtime, and must be listed in the template's own 'clients'."
         },
         "template": {
-          "type": "string",
-          "minLength": 1,
-          "description": "File path of a reusable template whose placeholders are filled in with 'dataset' and sent via 'client'."
+          "description": "File path of a reusable template, or an inline template body, whose placeholders are filled in with 'dataset' and sent via 'client'.",
+          "oneOf": [
+            { "$ref": "./template.schema.json#/$defs/body" },
+            { "type": "string", "minLength": 1 }
+          ]
         },
         "dataset": {
-          "description": "Values used to fill in the template's placeholders. Either an inline dataset body (see dataset.schema.json — 'data' for a single bag of values, 'rows' for a table), or a string giving the file path of a separately-defined dataset. If the resolved dataset has 'rows' rather than 'data', this step is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
+          "description": "Values used to fill in the template's placeholders. Either an inline dataset body (see dataset.schema.json 'data' for a single bag of values, 'rows' for a table), or a string giving the file path of a separately-defined dataset. If the resolved dataset has 'rows' rather than 'data', this step is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
           "oneOf": [
             { "$ref": "./dataset.schema.json#/$defs/body" },
             { "type": "string", "minLength": 1 }
@@ -49,12 +51,14 @@
           "description": "Optional human-readable label for this scenario call, shown in results. Defaults to the scenario name if omitted."
         },
         "scenario": {
-          "type": "string",
-          "minLength": 1,
-          "description": "File path of a reusable scenario to run inline at this point."
+          "description": "File path of a reusable scenario to run at this point, or an inline scenario body.",
+          "oneOf": [
+            { "$ref": "./scenario.schema.json#/$defs/body" },
+            { "type": "string", "minLength": 1 }
+          ]
         },
         "dataset": {
-          "description": "Input values passed to the scenario's parameters. Either an inline dataset body (see dataset.schema.json), or a string giving the file path of a separately-defined dataset. If the resolved dataset has 'rows' rather than 'data', this scenario call is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
+          "description": "Input values passed to the scenario's parameters. Either an inline dataset body, or a string giving the file path of a separately-defined dataset. If the resolved dataset has 'rows' rather than 'data', this scenario call is executed once per row, with each row's fields available for interpolation, producing one StepResult per row.",
           "oneOf": [
             { "$ref": "./dataset.schema.json#/$defs/body" },
             { "type": "string", "minLength": 1 }
@@ -81,7 +85,7 @@
         },
         "properties": {
           "type": "object",
-          "description": "Configuration passed to the assertion provider. Shape is defined entirely by the provider itself, not by this schema — e.g. a 'db' provider might expect {table, where, exists}, an 'http_response' provider might expect {path, equals}."
+          "description": "Configuration passed to the assertion provider. Shape is defined entirely by the provider itself, not by this schema e.g. a 'db' provider might expect {table, where, exists}, an 'http_response' provider might expect {path, equals}."
         }
       }
     },
@@ -153,6 +157,27 @@
       "name": "login as each seeded user",
       "scenario": "login_and_get_token",
       "dataset": "seeded_users"
+    },
+    {
+      "name": "inline template, no file needed",
+      "client": "http",
+      "template": {
+        "clients": ["http"],
+        "payload": { "foo": "{{foo}}" }
+      },
+      "dataset": { "data": { "foo": "bar" } }
+    },
+    {
+      "name": "inline scenario, no file needed",
+      "scenario": {
+        "steps": [
+          {
+            "client": "http",
+            "template": "login_request"
+          }
+        ]
+      },
+      "dataset": { "data": { "username": "alice" } }
     }
   ]
 }

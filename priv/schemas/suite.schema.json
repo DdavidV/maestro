@@ -8,7 +8,7 @@
     "name": {
       "type": "string",
       "minLength": 1,
-      "description": "Optional human-readable display label for the suite (e.g. \"Checkout Flow\"), shown in results/UI. Not used to reference it — suites are referenced by their file path (or supplied ad-hoc), so this need not be unique."
+      "description": "Optional human-readable display label for the suite (e.g. \"Checkout Flow\"), shown in results/UI. Not used to reference it suites are referenced by their file path (or supplied ad-hoc), so this need not be unique."
     },
     "description": {
       "type": "string",
