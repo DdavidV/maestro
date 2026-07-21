@@ -73,8 +73,27 @@ defmodule Maestro.Resources.Resolver do
   end
 
   defp expand(%{"testcases" => testcases} = suite) do
-    with {:ok, testcases} <- resolve_testcases(testcases) do
+    with :ok <- check_unique_testcase_ids(testcases),
+         {:ok, testcases} <- resolve_testcases(testcases) do
       {:ok, Map.put(suite, "testcases", testcases)}
+    end
+  end
+
+  # Testcase ids must be unique within a suite so status/result reporting can
+  # key by id unambiguously.
+  defp check_unique_testcase_ids(testcases) do
+    testcases
+    |> Enum.with_index()
+    |> Enum.reduce(%{}, fn {%{"id" => id}, index}, seen ->
+      Map.update(seen, id, [index], &[index | &1])
+    end)
+    |> Enum.find(fn {_id, indexes} -> length(indexes) > 1 end)
+    |> case do
+      nil ->
+        :ok
+
+      {id, indexes} ->
+        {:error, {:duplicate_testcase_id, id, Enum.sort(indexes)}}
     end
   end
 

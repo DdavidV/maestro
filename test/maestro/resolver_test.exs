@@ -27,8 +27,10 @@ defmodule Maestro.ResolverTest do
 
   test "resolve suite reference with steps only" do
     suite = %{
+      "id" => "my-suite",
       "testcases" => [
         %{
+          "id" => "testcase-1",
           "name" => "testcase 1",
           "steps" => [
             %{
@@ -63,8 +65,10 @@ defmodule Maestro.ResolverTest do
 
   test "resolve suite reference with scenario" do
     suite = %{
+      "id" => "my-suite",
       "testcases" => [
         %{
+          "id" => "testcase-1",
           "name" => "testcase 1",
           "steps" => [
             %{
@@ -118,8 +122,10 @@ defmodule Maestro.ResolverTest do
 
   test "broadcasts default_dataset's data over the caller's rows, caller's fields winning" do
     suite = %{
+      "id" => "my-suite",
       "testcases" => [
         %{
+          "id" => "testcase-1",
           "name" => "testcase 1",
           "steps" => [
             %{"scenario" => "my_scenario", "dataset" => "seeded_users"}
@@ -165,8 +171,10 @@ defmodule Maestro.ResolverTest do
 
   test "rejects a scenario call where both default_dataset and the caller's dataset have rows" do
     suite = %{
+      "id" => "my-suite",
       "testcases" => [
         %{
+          "id" => "testcase-1",
           "name" => "testcase 1",
           "steps" => [
             %{"scenario" => "my_scenario", "dataset" => "caller_rows"}
@@ -191,8 +199,10 @@ defmodule Maestro.ResolverTest do
 
   test "errors when a scenario call has no dataset, no inherited dataset, and no default_dataset" do
     suite = %{
+      "id" => "my-suite",
       "testcases" => [
         %{
+          "id" => "testcase-1",
           "name" => "testcase 1",
           "steps" => [%{"scenario" => "my_scenario"}]
         }
@@ -279,8 +289,10 @@ defmodule Maestro.ResolverTest do
   describe "scenario recursion guards" do
     test "rejects a scenario that calls itself" do
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [%{"scenario" => "self_referential", "dataset" => "my_dataset"}]
           }
@@ -300,8 +312,10 @@ defmodule Maestro.ResolverTest do
 
     test "rejects an indirect cycle across two scenarios" do
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [%{"scenario" => "scenario_a", "dataset" => "my_dataset"}]
           }
@@ -321,8 +335,10 @@ defmodule Maestro.ResolverTest do
       chain_length = Resolver.max_scenario_depth() + 1
 
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [%{"scenario" => "scenario_0", "dataset" => "my_dataset"}]
           }
@@ -356,8 +372,10 @@ defmodule Maestro.ResolverTest do
       chain_length = 10
 
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [%{"scenario" => "scenario_0", "dataset" => "my_dataset"}]
           }
@@ -386,8 +404,10 @@ defmodule Maestro.ResolverTest do
   describe "error path pinpointing" do
     test "a missing template reference names the testcase, step, and template" do
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "add-to-cart",
             "name" => "Add to cart",
             "steps" => [
               %{
@@ -412,8 +432,10 @@ defmodule Maestro.ResolverTest do
 
     test "a missing dataset reference inside a scenario call names the whole chain" do
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [%{"scenario" => "my_scenario", "dataset" => "does_not_exist"}]
           }
@@ -437,8 +459,10 @@ defmodule Maestro.ResolverTest do
 
     test "a schema-invalid dataset file surfaces {:invalid, reasons} at the right path" do
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [
               %{"client" => "http", "template" => "my_template", "dataset" => "broken_dataset"}
@@ -464,8 +488,10 @@ defmodule Maestro.ResolverTest do
   describe "inline template and scenario" do
     test "an inline template needs no file at all" do
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [
               %{
@@ -495,8 +521,10 @@ defmodule Maestro.ResolverTest do
 
     test "an inline scenario needs no file at all, and its inline nested template resolves too" do
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [
               %{
@@ -544,8 +572,10 @@ defmodule Maestro.ResolverTest do
 
     test "a named scenario calling an inline scenario still resolves, with no false cycle" do
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [%{"scenario" => "outer", "dataset" => "my_dataset"}]
           }
@@ -570,8 +600,10 @@ defmodule Maestro.ResolverTest do
 
     test "an inline scenario referencing a missing named template still pinpoints the path" do
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [
               %{
@@ -605,8 +637,10 @@ defmodule Maestro.ResolverTest do
         end)
 
       write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
         "testcases" => [
           %{
+            "id" => "testcase-1",
             "name" => "testcase 1",
             "steps" => [Map.put(inline_chain, "dataset", %{"data" => %{"a" => 1}})]
           }
@@ -616,6 +650,60 @@ defmodule Maestro.ResolverTest do
       write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
 
       assert {:error, %{reason: {:max_depth_exceeded, _max_depth}}} = Resolver.resolve("my_suite")
+    end
+  end
+
+  describe "testcase id uniqueness" do
+    test "rejects a suite with duplicate testcase ids" do
+      write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
+        "testcases" => [
+          %{
+            "id" => "dup",
+            "name" => "testcase 1",
+            "steps" => [
+              %{"client" => "http", "template" => "my_template", "dataset" => %{"data" => %{"a" => 1}}}
+            ]
+          },
+          %{
+            "id" => "dup",
+            "name" => "testcase 2",
+            "steps" => [
+              %{"client" => "http", "template" => "my_template", "dataset" => %{"data" => %{"a" => 2}}}
+            ]
+          }
+        ]
+      })
+
+      write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+
+      assert Resolver.resolve("my_suite") == {:error, {:duplicate_testcase_id, "dup", [0, 1]}}
+    end
+
+    test "accepts a suite where every testcase has a distinct id" do
+      write_resource!("suites", "my_suite", %{
+        "id" => "my-suite",
+        "testcases" => [
+          %{
+            "id" => "first",
+            "name" => "testcase 1",
+            "steps" => [
+              %{"client" => "http", "template" => "my_template", "dataset" => %{"data" => %{"a" => 1}}}
+            ]
+          },
+          %{
+            "id" => "second",
+            "name" => "testcase 2",
+            "steps" => [
+              %{"client" => "http", "template" => "my_template", "dataset" => %{"data" => %{"a" => 2}}}
+            ]
+          }
+        ]
+      })
+
+      write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+
+      assert {:ok, _resolved} = Resolver.resolve("my_suite")
     end
   end
 end

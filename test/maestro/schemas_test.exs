@@ -6,9 +6,11 @@ defmodule Maestro.SchemasTest do
   describe "validate/2 (:suite)" do
     test "accepts a minimal valid suite" do
       suite = %{
+        "id" => "checkout-flow",
         "name" => "Checkout Flow",
         "testcases" => [
           %{
+            "id" => "add-to-cart",
             "name" => "Add to cart",
             "steps" => [
               %{
@@ -31,14 +33,57 @@ defmodule Maestro.SchemasTest do
     end
 
     test "rejects a suite missing testcases" do
-      assert {:error, errors} = Schemas.validate(:suite, %{"name" => "Checkout Flow"})
+      assert {:error, errors} = Schemas.validate(:suite, %{"id" => "checkout-flow"})
       assert Enum.any?(errors, fn {message, _path} -> message =~ "testcases" end)
+    end
+
+    test "rejects a suite missing id" do
+      suite = %{
+        "testcases" => [
+          %{
+            "id" => "add-to-cart",
+            "name" => "Add to cart",
+            "steps" => [
+              %{
+                "client" => "http",
+                "template" => "add_to_cart_request",
+                "dataset" => %{"data" => %{"sku" => "ABC123", "qty" => 1}}
+              }
+            ]
+          }
+        ]
+      }
+
+      assert {:error, errors} = Schemas.validate(:suite, suite)
+      assert Enum.any?(errors, fn {message, _path} -> message =~ "id" end)
+    end
+
+    test "rejects a testcase missing id" do
+      suite = %{
+        "id" => "checkout-flow",
+        "testcases" => [
+          %{
+            "name" => "Add to cart",
+            "steps" => [
+              %{
+                "client" => "http",
+                "template" => "add_to_cart_request",
+                "dataset" => %{"data" => %{"sku" => "ABC123", "qty" => 1}}
+              }
+            ]
+          }
+        ]
+      }
+
+      assert {:error, _errors} = Schemas.validate(:suite, suite)
     end
 
     test "accepts a suite without a name" do
       suite = %{
+        "id" => "checkout-flow",
         "testcases" => [
           %{
+            "id" => "add-to-cart",
             "name" => "Add to cart",
             "steps" => [
               %{

@@ -40,8 +40,10 @@ defmodule Maestro.ResourcesTest do
   describe "fetch/2" do
     test "returns {:ok, data} for a valid suite" do
       suite = %{
+        "id" => "checkout-flow",
         "testcases" => [
           %{
+            "id" => "add-to-cart",
             "name" => "Add to cart",
             "steps" => [
               %{
