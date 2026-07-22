@@ -46,4 +46,24 @@ defmodule Maestro.Client do
       def name, do: @maestro_client_name
     end
   end
+
+  @doc """
+  Runs a `Maestro.Client.Registry` entry end-to-end for one step execution:
+  `init/2` (if the module implements it, else `call_state` defaults to
+  `entry.state` unchanged) followed by `send/2`.
+  """
+  @spec call(Maestro.Client.Registry.entry(), rendered) :: {:ok, term} | {:error, term}
+  def call(%{module: module, state: client_state}, rendered) do
+    with {:ok, call_state} <- maybe_init(module, client_state, rendered) do
+      module.send(call_state, rendered)
+    end
+  end
+
+  defp maybe_init(module, client_state, rendered) do
+    if function_exported?(module, :init, 2) do
+      module.init(client_state, rendered)
+    else
+      {:ok, client_state}
+    end
+  end
 end
