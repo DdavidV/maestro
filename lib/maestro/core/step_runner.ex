@@ -73,17 +73,17 @@ defmodule Maestro.Core.StepRunner do
     end
   end
 
-  defp run_step(%{"scenario" => scenario}, saved) do
-    {_status, {results, new_saved}} = run_steps(scenario["steps"], saved)
+  defp run_step(%{scenario: scenario}, saved) do
+    {_status, {results, new_saved}} = run_steps(scenario.steps, saved)
     {results, new_saved}
   end
 
-  defp run_step(%{"template" => _} = step, saved) do
-    case step["dataset"] do
-      %{"data" => data} ->
+  defp run_step(%{template: _} = step, saved) do
+    case step.dataset do
+      %{data: data} ->
         run_single(step, data, saved)
 
-      %{"rows" => rows} ->
+      %{rows: rows} ->
         Enum.reduce(rows, {[], saved}, fn row, {acc, saved} ->
           {results, new_saved} = run_single(step, row, saved)
           {acc ++ results, new_saved}
@@ -101,7 +101,7 @@ defmodule Maestro.Core.StepRunner do
         result = %{
           name: step_name(step),
           status: :ok,
-          client: step["client"],
+          client: step.client,
           rendered: rendered,
           response: response
         }
@@ -112,7 +112,7 @@ defmodule Maestro.Core.StepRunner do
         result = %{
           name: step_name(step),
           status: :error,
-          client: step["client"],
+          client: step.client,
           rendered: nil,
           response: reason
         }
@@ -122,10 +122,10 @@ defmodule Maestro.Core.StepRunner do
   end
 
   defp dispatch(step, context) do
-    with {:ok, payload} <- Interpolation.render(step["template"]["payload"], context),
-         {:ok, options} <- Interpolation.render(Map.get(step["template"], "options", %{}), context),
+    with {:ok, payload} <- Interpolation.render(step.template.payload, context),
+         {:ok, options} <- Interpolation.render(step.template.options, context),
          rendered = %{"payload" => payload, "options" => options},
-         {:ok, entry} <- ClientRegistry.fetch(step["client"]),
+         {:ok, entry} <- ClientRegistry.fetch(step.client),
          {:ok, response} <- Client.call(entry, rendered) do
       {:ok, rendered, response}
     end
@@ -133,8 +133,8 @@ defmodule Maestro.Core.StepRunner do
 
   defp extract_saves(step, response, saved) do
     step
-    |> Map.get("save", [])
-    |> Enum.reduce(saved, fn %{"path" => path, "as" => as}, acc ->
+    |> Map.get(:save, [])
+    |> Enum.reduce(saved, fn %{path: path, as: as}, acc ->
       case extract_path(response, path) do
         {:ok, value} -> Map.put(acc, as, value)
         :error -> acc
@@ -159,8 +159,8 @@ defmodule Maestro.Core.StepRunner do
 
   defp get_in_path(_keys, _value), do: :error
 
-  defp step_name(%{"name" => name}) when is_binary(name), do: name
-  defp step_name(%{"client" => client, "template" => template}), do: "#{client}: #{label(template)}"
-  defp label(%{"name" => name}) when is_binary(name), do: name
+  defp step_name(%{name: name}) when is_binary(name), do: name
+  defp step_name(%{client: client, template: template}), do: "#{client}: #{label(template)}"
+  defp label(%{name: name}) when is_binary(name), do: name
   defp label(_), do: "unnamed"
 end

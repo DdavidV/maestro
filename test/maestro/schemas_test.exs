@@ -99,6 +99,26 @@ defmodule Maestro.SchemasTest do
       assert Schemas.validate(:suite, suite) == :ok
     end
 
+    test "accepts a testcase without a name" do
+      suite = %{
+        "id" => "checkout-flow",
+        "testcases" => [
+          %{
+            "id" => "add-to-cart",
+            "steps" => [
+              %{
+                "client" => "http",
+                "template" => "add_to_cart_request",
+                "dataset" => %{"data" => %{"sku" => "ABC123", "qty" => 1}}
+              }
+            ]
+          }
+        ]
+      }
+
+      assert Schemas.validate(:suite, suite) == :ok
+    end
+
     test "rejects a suite whose step is neither a template-step nor a scenario-call" do
       suite = %{
         "name" => "Checkout Flow",

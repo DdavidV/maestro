@@ -17,6 +17,22 @@ defmodule Maestro.Resources.Resolver do
   Inline scenarios can't participate in cycle detection (they have no name to revisit)
   but still count toward `max_scenario_depth/0`.
 
+  ## Atom-keyed output
+
+  A successfully resolved suite (`t:Maestro.suite/0`) is atom-keyed at every
+  structural level suite/testcase/step/template/scenario/dataset-envelope/
+  save-entry field names are all fixed by the JSON schemas, so they become
+  atoms, which lets `t:Maestro.step/0` and friends be precise, Dialyzer-
+  checkable types instead of a catch-all `%{String.t() => term()}`.
+  Anything with an *open*, author-defined vocabulary stays string-keyed:
+  dataset `data`/`rows`  contents, a template's `payload`/`options` bodies,
+  and `save` state all  keep whatever field names the suite author chose
+  there's no fixed set to atomize, and blindly atomizing arbitrary/unbounded strings
+  would leak atoms for the lifetime of the VM. This conversion happens once, in a single pass
+  over the fully-resolved tree (`atomize_suite/1` below) resolution itself
+  still works in plain string-keyed maps throughout, matching the raw JSON
+  input and `Maestro.Resources.Schemas` validation.
+
   ## Errors
 
   Every error returned from `resolve/1` is enriched with a `path` pinpointing
@@ -57,6 +73,7 @@ defmodule Maestro.Resources.Resolver do
 
   @default_max_scenario_depth 50
 
+  @spec resolve(String.t() | map) :: {:ok, Maestro.suite()} | {:error, resolve_error | term}
   def resolve(suite_reference) when is_binary(suite_reference) do
     # Resources.fetch/2 already validates against the suite schema, so go
     # straight to expanding testcases instead of routing back through
@@ -75,7 +92,7 @@ defmodule Maestro.Resources.Resolver do
   defp expand(%{"testcases" => testcases} = suite) do
     with :ok <- check_unique_testcase_ids(testcases),
          {:ok, testcases} <- resolve_testcases(testcases) do
-      {:ok, Map.put(suite, "testcases", testcases)}
+      {:ok, atomize_suite(Map.put(suite, "testcases", testcases))}
     end
   end
 
@@ -320,5 +337,71 @@ defmodule Maestro.Resources.Resolver do
 
   def merge_dataset(%{"data" => defaults}, %{"rows" => rows}) do
     {:ok, %{"rows" => Enum.map(rows, &Map.merge(defaults, &1))}}
+  end
+
+  # One final pass over the fully-resolved (string-keyed) tree, converting
+  # every *structural* key to an atom.
+  defp atomize_suite(suite) do
+    suite
+    |> pick([:id, :name, :description, :tags])
+    |> Map.put(:testcases, Enum.map(suite["testcases"], &atomize_testcase/1))
+  end
+
+  defp atomize_testcase(testcase) do
+    testcase
+    |> pick([:id, :name, :description])
+    |> Map.put(:steps, Enum.map(testcase["steps"], &atomize_step/1))
+  end
+
+  defp atomize_step(%{"scenario" => scenario} = step) do
+    step
+    |> pick([:name, :assert])
+    |> Map.put(:scenario, atomize_scenario(scenario))
+    |> Map.put(:dataset, atomize_dataset(step["dataset"]))
+  end
+
+  defp atomize_step(%{"template" => template} = step) do
+    step
+    |> pick([:name, :client, :assert])
+    |> Map.put(:template, atomize_template(template))
+    |> Map.put(:dataset, atomize_dataset(step["dataset"]))
+    |> put_save(step)
+  end
+
+  defp put_save(atomized_step, %{"save" => save}) do
+    Map.put(atomized_step, :save, Enum.map(save, &pick(&1, [:path, :as])))
+  end
+
+  defp put_save(atomized_step, _step), do: atomized_step
+
+  defp atomize_template(template) do
+    template
+    |> pick([:name, :description, :clients, :payload])
+    |> Map.put(:options, Map.get(template, "options", %{}))
+  end
+
+  defp atomize_scenario(scenario) do
+    scenario
+    |> pick([:name, :description])
+    |> Map.put(:default_dataset, atomize_dataset(scenario["default_dataset"]))
+    |> Map.put(:steps, Enum.map(scenario["steps"], &atomize_step/1))
+  end
+
+  defp atomize_dataset(nil), do: nil
+  defp atomize_dataset(dataset), do: pick(dataset, [:data, :rows])
+
+  # Builds a new map with `keys` (atoms) as keys, pulling each value from
+  # `map`'s matching string key. Keys absent from `map` are simply omitted
+  # (this is how optional structural fields, e.g. a step's `name`, stay
+  # absent rather than becoming `nil` entries) values themselves are
+  # carried over unchanged, so open-vocabulary content nested underneath
+  # (dataset fields, payload/options bodies) is untouched.
+  defp pick(map, keys) do
+    Enum.reduce(keys, %{}, fn key, acc ->
+      case Map.fetch(map, Atom.to_string(key)) do
+        {:ok, value} -> Map.put(acc, key, value)
+        :error -> acc
+      end
+    end)
   end
 end

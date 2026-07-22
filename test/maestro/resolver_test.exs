@@ -48,14 +48,14 @@ defmodule Maestro.ResolverTest do
 
     assert {:ok,
             %{
-              "testcases" => [
+              testcases: [
                 %{
-                  "name" => "testcase 1",
-                  "steps" => [
+                  name: "testcase 1",
+                  steps: [
                     %{
-                      "client" => "http",
-                      "dataset" => %{"data" => %{"foo" => "bar"}},
-                      "template" => %{"clients" => ["http"], "payload" => %{"a" => 1}}
+                      client: "http",
+                      dataset: %{data: %{"foo" => "bar"}},
+                      template: %{clients: ["http"], payload: %{"a" => 1}, options: %{}}
                     }
                   ]
                 }
@@ -94,21 +94,22 @@ defmodule Maestro.ResolverTest do
 
     assert {:ok,
             %{
-              "testcases" => [
+              testcases: [
                 %{
-                  "name" => "testcase 1",
-                  "steps" => [
+                  name: "testcase 1",
+                  steps: [
                     %{
-                      "dataset" => %{"data" => %{"foo" => "bar"}},
-                      "scenario" => %{
-                        "default_dataset" => %{"data" => %{"foo" => "bar"}},
-                        "steps" => [
+                      dataset: %{data: %{"foo" => "bar"}},
+                      scenario: %{
+                        default_dataset: %{data: %{"foo" => "bar"}},
+                        steps: [
                           %{
-                            "client" => "http",
-                            "dataset" => %{"data" => %{"foo" => "bar"}},
-                            "template" => %{
-                              "clients" => ["http"],
-                              "payload" => %{"a" => 1}
+                            client: "http",
+                            dataset: %{data: %{"foo" => "bar"}},
+                            template: %{
+                              clients: ["http"],
+                              payload: %{"a" => 1},
+                              options: %{}
                             }
                           }
                         ]
@@ -152,12 +153,12 @@ defmodule Maestro.ResolverTest do
 
     assert {:ok,
             %{
-              "testcases" => [
+              testcases: [
                 %{
-                  "steps" => [
+                  steps: [
                     %{
-                      "dataset" => %{
-                        "rows" => [
+                      dataset: %{
+                        rows: [
                           %{"username" => "alice", "password" => "default-pw"},
                           %{"username" => "bob", "password" => "bobs-own-pw"}
                         ]
@@ -506,12 +507,12 @@ defmodule Maestro.ResolverTest do
 
       assert {:ok,
               %{
-                "testcases" => [
+                testcases: [
                   %{
-                    "steps" => [
+                    steps: [
                       %{
-                        "template" => %{"clients" => ["http"], "payload" => %{"foo" => "{{foo}}"}},
-                        "dataset" => %{"data" => %{"foo" => "bar"}}
+                        template: %{clients: ["http"], payload: %{"foo" => "{{foo}}"}, options: %{}},
+                        dataset: %{data: %{"foo" => "bar"}}
                       }
                     ]
                   }
@@ -546,19 +547,19 @@ defmodule Maestro.ResolverTest do
 
       assert {:ok,
               %{
-                "testcases" => [
+                testcases: [
                   %{
-                    "steps" => [
+                    steps: [
                       %{
-                        "scenario" => %{
-                          "default_dataset" => %{
-                            "data" => %{"username" => "alice", "password" => "default-pw"}
+                        scenario: %{
+                          default_dataset: %{
+                            data: %{"username" => "alice", "password" => "default-pw"}
                           },
-                          "steps" => [
+                          steps: [
                             %{
-                              "template" => %{"clients" => ["http"], "payload" => %{"a" => 1}},
-                              "dataset" => %{
-                                "data" => %{"username" => "alice", "password" => "default-pw"}
+                              template: %{clients: ["http"], payload: %{"a" => 1}, options: %{}},
+                              dataset: %{
+                                data: %{"username" => "alice", "password" => "default-pw"}
                               }
                             }
                           ]

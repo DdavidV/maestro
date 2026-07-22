@@ -32,7 +32,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "name", "steps"],
+        "required": ["id", "steps"],
         "properties": {
           "id": {
             "type": "string",
@@ -42,7 +42,7 @@
           "name": {
             "type": "string",
             "minLength": 1,
-            "description": "Human-readable name for the testcase (e.g. \"Add to cart\")."
+            "description": "Optional human-readable display label for the testcase (e.g. \"Add to cart\"), shown in results/UI. Purely cosmetic has no bearing on identity, unlike 'id'."
           },
           "description": {
             "type": "string",
