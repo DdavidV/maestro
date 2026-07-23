@@ -32,8 +32,8 @@
         },
         "assert": {
           "type": "array",
-          "description": "Optional checks run against this step's result after it executes (once per row, if 'dataset' iterates). Each check is dispatched to a registered assertion provider.",
-          "items": { "$ref": "#/$defs/assertion" }
+          "description": "Optional checks run against this step's result after it executes (once per row, if 'dataset' iterates). Each check is dispatched to a registered assertion matcher.",
+          "items": { "$ref": "./assertion.schema.json#/$defs/assertion" }
         },
         "save": {
           "type": "array",
@@ -63,32 +63,11 @@
             { "$ref": "./dataset.schema.json#/$defs/body" },
             { "type": "string", "minLength": 1 }
           ]
-        },
-        "assert": {
-          "type": "array",
-          "description": "Optional checks run against this scenario call's result after it executes. Each check is dispatched to a registered assertion provider.",
-          "items": { "$ref": "#/$defs/assertion" }
         }
       }
     }
   ],
   "$defs": {
-    "assertion": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["provider", "properties"],
-      "properties": {
-        "provider": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Name of the registered assertion provider that interprets 'properties' and performs the check (e.g. \"db\" to look up a row and validate it, \"http_response\" to check the last response's shape). Must match a provider registered in the Maestro assertion-provider registry at runtime."
-        },
-        "properties": {
-          "type": "object",
-          "description": "Configuration passed to the assertion provider. Shape is defined entirely by the provider itself, not by this schema e.g. a 'db' provider might expect {table, where, exists}, an 'http_response' provider might expect {path, equals}."
-        }
-      }
-    },
     "save_entry": {
       "type": "object",
       "additionalProperties": false,
@@ -124,12 +103,9 @@
       "dataset": { "data": { "order_id": "123", "total": 42 } },
       "assert": [
         {
-          "provider": "db",
-          "properties": {
-            "table": "orders",
-            "where": { "id": "{{order_id}}" },
-            "exists": true
-          }
+          "matcher": "json_match",
+          "path": "$.order_id",
+          "expected": "{{order_id}}"
         }
       ]
     },
@@ -140,12 +116,7 @@
       "dataset": "seeded_users",
       "assert": [
         {
-          "provider": "db",
-          "properties": {
-            "table": "accounts",
-            "where": { "username": "{{username}}" },
-            "exists": true
-          }
+          "expected": { "username": "{{username}}", "id": "$expected" }
         }
       ]
     },

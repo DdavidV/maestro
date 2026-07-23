@@ -25,19 +25,35 @@ defmodule Maestro.Core.StepRunner do
   ## Failure handling
 
   A step's failure (a missing interpolation key, an unregistered client, a
-  client init/send error) does not halt the sequence it's recorded as a
-  failed `t:step_result/0` and execution continues, so a run surfaces as
-  much diagnostic information as possible in one pass rather than
-  stopping at the first problem. `save` extraction is best-effort: if a
-  `save` entry's path doesn't resolve against the response, that entry is
-  silently skipped rather than failing the step, a response's shape
-  legitimately varies (an error body doesn't look like a success body),
-  unlike a static file reference being wrong.
+  client init/send error, or a failing assertion) does not halt the
+  sequence it's recorded as a failed `t:step_result/0` and execution
+  continues, so a run surfaces as much diagnostic information as possible
+  in one pass rather than stopping at the first problem. `save` extraction
+  is best-effort: if a `save` entry's path doesn't resolve against the
+  response, that entry is silently skipped rather than failing the step, a
+  response's shape legitimately varies (an error body doesn't look like a
+  success body), unlike a static file reference being wrong.
+
+  ## Assertions
+
+  Only a template-step carries `assert` a scenario call has no single
+  response of its own to check, only its nested steps do, so a scenario
+  call's steps are asserted individually, same as any other template-step,
+  and the scenario call itself has no assertions of its own. A
+  template-step's `assert` entries run once its response comes back,
+  against that response and the same interpolation context (dataset fields
+  merged with accumulated `save` state) the step itself rendered against.
+  A failing assertion puts the step's `status` in the same `:error` bucket
+  as a dispatch failure, even though the request itself succeeded
+  `assertions` on `t:step_result/0` records every individual check's
+  outcome regardless.
   """
 
   alias Maestro.Client
   alias Maestro.Client.Registry, as: ClientRegistry
+  alias Maestro.Core.AssertRunner
   alias Maestro.Core.Interpolation
+  alias Maestro.Core.JsonPath
 
   @type saved :: %{String.t() => term}
   @type step_result :: %{
@@ -45,7 +61,8 @@ defmodule Maestro.Core.StepRunner do
           status: :ok | :error,
           client: String.t() | nil,
           rendered: Client.rendered() | nil,
-          response: term
+          response: term,
+          assertions: [AssertRunner.assertion_result()]
         }
 
   @doc """
@@ -98,12 +115,16 @@ defmodule Maestro.Core.StepRunner do
       {:ok, rendered, response} ->
         new_saved = extract_saves(step, response, saved)
 
+        {status, assertion_results} =
+          AssertRunner.run_assertions(Map.get(step, :assert, []), response, context)
+
         result = %{
           name: step_name(step),
-          status: :ok,
+          status: status,
           client: step.client,
           rendered: rendered,
-          response: response
+          response: response,
+          assertions: assertion_results
         }
 
         {[result], new_saved}
@@ -114,7 +135,8 @@ defmodule Maestro.Core.StepRunner do
           status: :error,
           client: step.client,
           rendered: nil,
-          response: reason
+          response: reason,
+          assertions: []
         }
 
         {[result], saved}
@@ -135,29 +157,12 @@ defmodule Maestro.Core.StepRunner do
     step
     |> Map.get(:save, [])
     |> Enum.reduce(saved, fn %{path: path, as: as}, acc ->
-      case extract_path(response, path) do
+      case JsonPath.extract(response, path) do
         {:ok, value} -> Map.put(acc, as, value)
-        :error -> acc
+        {:error, _reason} -> acc
       end
     end)
   end
-
-  defp extract_path(response, "$." <> rest) do
-    rest |> String.split(".") |> get_in_path(response)
-  end
-
-  defp extract_path(_response, _path), do: :error
-
-  defp get_in_path([], value), do: {:ok, value}
-
-  defp get_in_path([key | rest], %{} = map) do
-    case Map.fetch(map, key) do
-      {:ok, value} -> get_in_path(rest, value)
-      :error -> :error
-    end
-  end
-
-  defp get_in_path(_keys, _value), do: :error
 
   defp step_name(%{name: name}) when is_binary(name), do: name
   defp step_name(%{client: client, template: template}), do: "#{client}: #{label(template)}"

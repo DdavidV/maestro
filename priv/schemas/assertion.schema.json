@@ -1,0 +1,32 @@
+{
+  "title": "Assertion",
+  "description": "A single check run against a step's result after it executes, dispatched by 'matcher' name to a registered Maestro.Assert.Matcher implementation. Referenced from step.schema.json and scenario.schema.json so both share one definition.",
+  "type": "object",
+  "allOf": [{ "$ref": "#/$defs/assertion" }],
+  "$defs": {
+    "assertion": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["expected"],
+      "properties": {
+        "matcher": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the registered assertion matcher (see Maestro.Assert.Registry) that interprets this entry and performs the check. Defaults to \"json_match\" if omitted."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "json_match-specific: path into the step's response to check (e.g. \"$.total\"). If omitted, the whole response is checked. Other matchers may ignore this field or give it their own meaning."
+        },
+        "expected": {
+          "description": "The expected value/shape to check against (or matcher-specific check configuration). May reference the step's resolved dataset/saved state via interpolation (e.g. \"{{order_id}}\")."
+        }
+      }
+    }
+  },
+  "examples": [
+    { "matcher": "json_match", "path": "$.total", "expected": 42 },
+    { "expected": { "status": "$expected", "id": "{{order_id}}" } }
+  ]
+}

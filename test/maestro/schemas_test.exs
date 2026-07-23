@@ -242,15 +242,50 @@ defmodule Maestro.SchemasTest do
       assert {:error, _errors} = Schemas.validate(:step, step)
     end
 
-    test "rejects an assert entry missing properties" do
+    test "rejects an assert entry missing expected" do
       step = %{
         "client" => "http",
         "template" => "t",
         "dataset" => %{},
-        "assert" => [%{"provider" => "db"}]
+        "assert" => [%{"matcher" => "json_match"}]
       }
 
       assert {:error, _errors} = Schemas.validate(:step, step)
+    end
+
+    test "accepts an assert entry without a matcher" do
+      step = %{
+        "client" => "http",
+        "template" => "t",
+        "dataset" => %{"data" => %{"foo" => "bar"}},
+        "assert" => [%{"expected" => 42}]
+      }
+
+      assert Schemas.validate(:step, step) == :ok
+    end
+
+    test "accepts an assert entry with a matcher, path, and expected" do
+      step = %{
+        "client" => "http",
+        "template" => "t",
+        "dataset" => %{"data" => %{"foo" => "bar"}},
+        "assert" => [%{"matcher" => "json_match", "path" => "$.total", "expected" => 42}]
+      }
+
+      assert Schemas.validate(:step, step) == :ok
+    end
+
+    test "accepts an assert entry with matcher-specific extra fields beyond matcher/path/expected" do
+      step = %{
+        "client" => "http",
+        "template" => "t",
+        "dataset" => %{"data" => %{"foo" => "bar"}},
+        "assert" => [
+          %{"matcher" => "db", "expected" => %{"exists" => true}, "table" => "orders"}
+        ]
+      }
+
+      assert Schemas.validate(:step, step) == :ok
     end
   end
 

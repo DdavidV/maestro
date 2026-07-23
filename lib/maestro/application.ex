@@ -7,6 +7,7 @@ defmodule Maestro.Application do
   def start(_type, _args) do
     Maestro.Resources.Schemas.load!()
     Maestro.Client.Registry.load!()
+    Maestro.Assert.Registry.load!()
 
     children = [
       MaestroWeb.Telemetry,

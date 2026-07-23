@@ -1,11 +1,13 @@
 defmodule Maestro.Core.StepRunnerTest do
   use ExUnit.Case, async: false
 
+  alias Maestro.Assert.Registry, as: AssertRegistry
   alias Maestro.Client.Registry, as: ClientRegistry
   alias Maestro.Core.StepRunner
 
   setup do
     :ok = ClientRegistry.load!()
+    :ok = AssertRegistry.load!()
     :ok
   end
 
@@ -18,7 +20,8 @@ defmodule Maestro.Core.StepRunnerTest do
         options: Keyword.get(opts, :options, %{})
       },
       dataset: Keyword.fetch!(opts, :dataset),
-      save: Keyword.get(opts, :save, [])
+      save: Keyword.get(opts, :save, []),
+      assert: Keyword.get(opts, :assert, [])
     }
     |> Enum.reject(fn {_k, v} -> v == nil end)
     |> Map.new()
@@ -224,6 +227,137 @@ defmodule Maestro.Core.StepRunnerTest do
 
       assert saved["token"] == "from-scenario"
       assert after_result.rendered["payload"] == %{"v" => "from-scenario"}
+    end
+  end
+
+  describe "run_steps/2 assertions" do
+    test "all assertions passing keeps the step :ok" do
+      step =
+        template_step(
+          payload: %{"ok" => true},
+          dataset: %{data: %{}},
+          assert: [%{matcher: "test_matcher", expected: nil}]
+        )
+
+      assert {:ok, {[result], _saved}} = StepRunner.run_steps([step])
+      assert result.status == :ok
+
+      assert [%{status: :ok, reason: nil, assertion: %{matcher: "test_matcher"}}] =
+               result.assertions
+    end
+
+    test "a failing assertion flips a successful dispatch to :error" do
+      step =
+        template_step(
+          payload: %{"ok" => true},
+          dataset: %{data: %{}},
+          assert: [%{"should_fail" => true, matcher: "test_matcher", expected: nil}]
+        )
+
+      assert {:error, {[result], _saved}} = StepRunner.run_steps([step])
+      assert result.status == :error
+      assert result.response == %{"echo" => result.rendered}
+
+      assert [%{status: :error, reason: reason, assertion: %{matcher: "test_matcher"}}] =
+               result.assertions
+
+      assert {:test_matcher_saw, _assertion, _actual, _context} = reason
+    end
+
+    test "json_match works end-to-end against the real response" do
+      step =
+        template_step(
+          payload: %{"ok" => true},
+          dataset: %{data: %{}},
+          assert: [%{matcher: "json_match", path: "$.echo.payload.ok", expected: true}]
+        )
+
+      assert {:ok, {[result], _saved}} = StepRunner.run_steps([step])
+      assert result.status == :ok
+    end
+
+    test "multiple assertions with one failing are all recorded, aggregate :error" do
+      step =
+        template_step(
+          payload: %{"ok" => true},
+          dataset: %{data: %{}},
+          assert: [
+            %{matcher: "test_matcher_always_ok", expected: nil},
+            %{"should_fail" => true, matcher: "test_matcher", expected: nil}
+          ]
+        )
+
+      assert {:error, {[result], _saved}} = StepRunner.run_steps([step])
+      assert result.status == :error
+
+      assert [
+               %{status: :ok, reason: nil, assertion: %{matcher: "test_matcher_always_ok"}},
+               %{status: :error, reason: _reason, assertion: %{matcher: "test_matcher"}}
+             ] = result.assertions
+    end
+
+    test "a step without assert entries has empty assertions and stays :ok" do
+      step = template_step(payload: %{"ok" => true}, dataset: %{data: %{}})
+
+      assert {:ok, {[result], _saved}} = StepRunner.run_steps([step])
+      assert result.assertions == []
+    end
+
+    test "a dispatch failure means assertions never run" do
+      step =
+        template_step(
+          client: "does_not_exist",
+          payload: %{},
+          dataset: %{data: %{}},
+          assert: [%{matcher: "test_matcher", expected: nil}]
+        )
+
+      assert {:error, {[result], _saved}} = StepRunner.run_steps([step])
+      assert result.status == :error
+      assert result.assertions == []
+    end
+
+    test "save extraction still happens alongside a failed assertion" do
+      step =
+        template_step(
+          payload: %{"seed" => "abc"},
+          dataset: %{data: %{}},
+          save: [%{path: "$.echo.payload.seed", as: "token"}],
+          assert: [%{"should_fail" => true, matcher: "test_matcher", expected: nil}]
+        )
+
+      assert {:error, {[result], saved}} = StepRunner.run_steps([step])
+      assert result.status == :error
+      assert saved["token"] == "abc"
+    end
+
+    test "an unregistered matcher name surfaces as an assertion-level :not_found reason" do
+      step =
+        template_step(
+          payload: %{},
+          dataset: %{data: %{}},
+          assert: [%{matcher: "does_not_exist", expected: 1}]
+        )
+
+      assert {:error, {[result], _saved}} = StepRunner.run_steps([step])
+
+      assert [%{status: :error, reason: :not_found, assertion: %{matcher: "does_not_exist"}}] =
+               result.assertions
+    end
+
+    test "a template-step nested inside a scenario call still runs its own assert" do
+      leaf =
+        template_step(
+          payload: %{"ok" => true},
+          dataset: %{data: %{}},
+          assert: [%{"should_fail" => true, matcher: "test_matcher", expected: nil}]
+        )
+
+      scenario_step = %{scenario: %{steps: [leaf]}}
+
+      assert {:error, {[result], _saved}} = StepRunner.run_steps([scenario_step])
+      assert result.status == :error
+      assert [%{status: :error, assertion: %{matcher: "test_matcher"}}] = result.assertions
     end
   end
 

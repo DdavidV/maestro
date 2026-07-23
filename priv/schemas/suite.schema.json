@@ -80,8 +80,9 @@
               "dataset": { "data": { "sku": "ABC123", "qty": 1 } },
               "assert": [
                 {
-                  "provider": "http_response",
-                  "properties": { "path": "$.total", "equals": 42 }
+                  "matcher": "json_match",
+                  "path": "$.total",
+                  "expected": 42
                 }
               ]
             }

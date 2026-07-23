@@ -355,16 +355,17 @@ defmodule Maestro.Resources.Resolver do
 
   defp atomize_step(%{"scenario" => scenario} = step) do
     step
-    |> pick([:name, :assert])
+    |> pick([:name])
     |> Map.put(:scenario, atomize_scenario(scenario))
     |> Map.put(:dataset, atomize_dataset(step["dataset"]))
   end
 
   defp atomize_step(%{"template" => template} = step) do
     step
-    |> pick([:name, :client, :assert])
+    |> pick([:name, :client])
     |> Map.put(:template, atomize_template(template))
     |> Map.put(:dataset, atomize_dataset(step["dataset"]))
+    |> put_assert(step)
     |> put_save(step)
   end
 
@@ -373,6 +374,26 @@ defmodule Maestro.Resources.Resolver do
   end
 
   defp put_save(atomized_step, _step), do: atomized_step
+
+  defp put_assert(atomized_step, %{"assert" => assert}) do
+    Map.put(atomized_step, :assert, Enum.map(assert, &atomize_assertion/1))
+  end
+
+  defp put_assert(atomized_step, _step), do: atomized_step
+
+  # An assertion entry is flat, not wrapped in an opaque properties bag:
+  # `matcher`/`path`/`expected` are the fixed common envelope (atomized),
+  # but a matcher may attach further matcher-specific fields beyond those
+  # three (open vocabulary, same principle as a dataset's field names)
+  # those are merged back in string-keyed rather than dropped.
+  @assertion_keys [:matcher, :path, :expected]
+
+  defp atomize_assertion(assertion) do
+    assertion
+    |> pick(@assertion_keys)
+    |> Map.merge(Map.drop(assertion, Enum.map(@assertion_keys, &Atom.to_string/1)))
+    |> Map.put_new(:matcher, "json_match")
+  end
 
   defp atomize_template(template) do
     template

@@ -22,7 +22,7 @@ author, trigger, and inspect them:
 - **From a GUI** a suite is just data, so it can be built and browsed visually without touching code.
 - **From Elixir code** since Maestro ships as a dependency, a host application can define suites,
 scenarios, and step types directly and run them as part of its own test/dev workflow. Host applications
-can also register their own clients and assertion providers, so Maestro can be extended to speak a new
+can also register their own clients and assertion matchers, so Maestro can be extended to speak a new
 protocol or check a new kind of outcome without changing Maestro itself.
 
 ## What a suite looks like

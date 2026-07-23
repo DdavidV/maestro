@@ -66,8 +66,7 @@ defmodule Maestro do
   @type scenario_step :: %{
           optional(:name) => String.t(),
           required(:scenario) => resolved_scenario(),
-          required(:dataset) => dataset_body(),
-          optional(:assert) => [assertion()]
+          required(:dataset) => dataset_body()
         }
 
   @typedoc """
@@ -115,8 +114,20 @@ defmodule Maestro do
   """
   @type save_entry :: %{path: String.t(), as: String.t()}
 
-  @typedoc "An assertion entry. Not implemented yet and currently ignored."
-  @type assertion :: %{String.t() => term()}
+  @typedoc """
+  A single check run against a step's result, dispatched to a registered
+  `Maestro.Assert.Matcher` by `matcher` name. `matcher` is always present
+  after resolution — `Maestro.Resources.Resolver` fills in `"json_match"` if
+  the author omitted it. `expected` is required; `path` is optional and
+  `json_match`-specific (other matchers may ignore it or give it their own
+  meaning). A matcher may attach further, matcher-specific fields beyond
+  these three; those aren't modeled here, same tradeoff as `dataset_values`.
+  """
+  @type assertion :: %{
+          required(:matcher) => String.t(),
+          required(:expected) => term(),
+          optional(:path) => String.t()
+        }
 
   def run(_entries) do
   end
