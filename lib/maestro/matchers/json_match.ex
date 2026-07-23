@@ -35,6 +35,17 @@ defmodule Maestro.Matchers.JsonMatch do
       match any element of `actual`. Simpler than `$contains` no
       consume-once/greedy concerns apply, since every excluded item is
       checked against the *whole* list independently.
+    * `%{"$length" => spec}` (value, `actual` must be a list) checks the
+      list's length without checking its contents. `spec` is one of a bare
+      integer (`%{"$length" => 5}`, exact length), `%{"$gt" => n}` (strictly
+      greater than `n`), `%{"$lt" => n}` (strictly less than `n`), or
+      `%{"$between" => [min, max]}` (inclusive on both ends). Like every
+      other single-key-wrapper directive, `$length` can't be combined with
+      `$contains`/`$excludes` *in the same wrapper* (a map with more than
+      one key falls through to a literal object match instead, which would
+      then fail against a list `actual`) checking both length and
+      contents of the same list needs two separate `assert` entries with
+      the same `path`.
     * bare `[...]` (value) ordered, exact-length, index-by-index match.
       This is the default. `"$expected"` may appear as an element at any
       index (a positional wildcard: there must be an element there, its
@@ -74,6 +85,10 @@ defmodule Maestro.Matchers.JsonMatch do
   @closed_key "$_"
   @contains_key "$contains"
   @excludes_key "$excludes"
+  @length_key "$length"
+  @gt_key "$gt"
+  @lt_key "$lt"
+  @between_key "$between"
   @regex_key "$regex"
   @mfa_key "$mfa"
 
@@ -100,6 +115,10 @@ defmodule Maestro.Matchers.JsonMatch do
 
   defp match_value(%{@excludes_key => excluded} = m, actual) when map_size(m) == 1 do
     match_excludes(excluded, actual)
+  end
+
+  defp match_value(%{@length_key => spec} = m, actual) when map_size(m) == 1 do
+    match_length(spec, actual)
   end
 
   defp match_value(%{@regex_key => pattern} = m, actual) when map_size(m) == 1 do
@@ -266,6 +285,39 @@ defmodule Maestro.Matchers.JsonMatch do
   end
 
   defp match_excludes(_excluded, actual), do: {:error, {:type_mismatch, :list_expected, actual}}
+
+  defp match_length(spec, actual) when is_list(actual) do
+    match_length_spec(spec, length(actual))
+  end
+
+  defp match_length(_spec, actual), do: {:error, {:type_mismatch, :list_expected, actual}}
+
+  defp match_length_spec(expected_length, actual_length) when is_integer(expected_length) do
+    if actual_length == expected_length,
+      do: :ok,
+      else: {:error, {:length_not_equal, expected_length, actual_length}}
+  end
+
+  defp match_length_spec(%{@gt_key => min} = m, actual_length) when map_size(m) == 1 do
+    if actual_length > min,
+      do: :ok,
+      else: {:error, {:length_not_greater_than, min, actual_length}}
+  end
+
+  defp match_length_spec(%{@lt_key => max} = m, actual_length) when map_size(m) == 1 do
+    if actual_length < max,
+      do: :ok,
+      else: {:error, {:length_not_less_than, max, actual_length}}
+  end
+
+  defp match_length_spec(%{@between_key => [min, max]} = m, actual_length)
+       when map_size(m) == 1 do
+    if actual_length >= min and actual_length <= max,
+      do: :ok,
+      else: {:error, {:length_not_between, min, max, actual_length}}
+  end
+
+  defp match_length_spec(spec, _actual_length), do: {:error, {:invalid_length_directive, spec}}
 
   defp match_regex(pattern, actual) when is_binary(pattern) and is_binary(actual) do
     case Regex.compile(pattern) do

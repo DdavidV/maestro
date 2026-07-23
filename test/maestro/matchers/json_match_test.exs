@@ -310,6 +310,81 @@ defmodule Maestro.Matchers.JsonMatchTest do
     end
   end
 
+  describe "$length" do
+    test "bare integer is an exact-length check" do
+      assert match(%{"$length" => 3}, [1, 2, 3]) == :ok
+      assert match(%{"$length" => 3}, [1, 2]) == {:error, {:length_not_equal, 3, 2}}
+    end
+
+    test "$gt: strictly greater than" do
+      assert match(%{"$length" => %{"$gt" => 2}}, [1, 2, 3]) == :ok
+
+      assert match(%{"$length" => %{"$gt" => 2}}, [1, 2]) ==
+               {:error, {:length_not_greater_than, 2, 2}}
+    end
+
+    test "$lt: strictly less than" do
+      assert match(%{"$length" => %{"$lt" => 3}}, [1, 2]) == :ok
+
+      assert match(%{"$length" => %{"$lt" => 3}}, [1, 2, 3]) ==
+               {:error, {:length_not_less_than, 3, 3}}
+    end
+
+    test "$between: inclusive on both ends" do
+      assert match(%{"$length" => %{"$between" => [2, 4]}}, [1, 2]) == :ok
+      assert match(%{"$length" => %{"$between" => [2, 4]}}, [1, 2, 3, 4]) == :ok
+
+      assert match(%{"$length" => %{"$between" => [2, 4]}}, [1]) ==
+               {:error, {:length_not_between, 2, 4, 1}}
+
+      assert match(%{"$length" => %{"$between" => [2, 4]}}, [1, 2, 3, 4, 5]) ==
+               {:error, {:length_not_between, 2, 4, 5}}
+    end
+
+    test "against a non-list actual is a type mismatch" do
+      assert match(%{"$length" => 3}, "not a list") ==
+               {:error, {:type_mismatch, :list_expected, "not a list"}}
+    end
+
+    test "a malformed spec is a hard error, not guessed at" do
+      assert match(%{"$length" => %{"$foo" => 1}}, [1]) ==
+               {:error, {:invalid_length_directive, %{"$foo" => 1}}}
+
+      assert match(%{"$length" => "three"}, [1]) ==
+               {:error, {:invalid_length_directive, "three"}}
+    end
+
+    test "does not compose with $contains/$excludes in the same wrapper" do
+      # a map with more than one key isn't a recognized single-key
+      # directive, so it falls through to a literal object match, which
+      # then fails against a list actual this is documented behavior,
+      # not a bug: checking both length and contents needs two `assert`
+      # entries with the same `path`, not one combined expected value.
+      expected = %{"$length" => 3, "$contains" => [1]}
+
+      assert match(expected, [1, 2, 3]) ==
+               {:error, {:type_mismatch, :object_expected, [1, 2, 3]}}
+    end
+
+    test "checking length and contents of the same list via two assert entries" do
+      response = %{"items" => ["a", "b"]}
+
+      length_check = %{expected: %{"$length" => %{"$between" => [1, 5]}}, path: "$.items"}
+      contains_check = %{expected: %{"$contains" => ["a"]}, path: "$.items"}
+
+      assert JsonMatch.match(length_check, response, %{}) == :ok
+      assert JsonMatch.match(contains_check, response, %{}) == :ok
+    end
+
+    test "templating resolves before length is checked" do
+      expected = %{"$length" => %{"$gt" => "{{min_count}}"}}
+      assert match(expected, [1, 2, 3], %{"min_count" => 2}) == :ok
+
+      assert match(expected, [1], %{"min_count" => 2}) ==
+               {:error, {:length_not_greater_than, 2, 1}}
+    end
+  end
+
   describe "$regex" do
     test "a matching pattern passes" do
       assert match(%{"$regex" => "^ORD-\\d+$"}, "ORD-123") == :ok

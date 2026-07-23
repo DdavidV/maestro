@@ -232,6 +232,49 @@ Passes as long as no element of the response list deep-matches
 subtlety here each excluded item is independently checked against every
 element.
 
+### Length `$length`
+
+Checks how many elements a list has, without checking the elements
+themselves. Four forms:
+
+```json
+{ "expected": { "$length": 3 } }
+```
+
+Exact length: the list must have precisely 3 elements.
+
+```json
+{ "expected": { "items": { "$length": { "$gt": 0 } } } }
+```
+
+`$gt`/`$lt` strictly greater than / strictly less than:
+
+```json
+{ "expected": { "items": { "$length": { "$lt": 100 } } } }
+```
+
+```json
+{ "expected": { "items": { "$length": { "$between": [1, 10] } } } }
+```
+
+`$between` inclusive on both ends: a list of exactly 1 or exactly 10
+elements both pass.
+
+**`$length` can't be combined with `$contains`/`$excludes` in the same
+object** `{"$length": 3, "$contains": [1]}` is *not* "length 3 and
+contains 1," it's an invalid combination (a wrapper object is only
+recognized as a directive when it has exactly one key, with two keys it's
+treated as a literal object to match, which then fails outright since the
+response is a list, not an object). To check both length and contents of
+the same list, use two separate `assert` entries with the same `path`:
+
+```json
+"assert": [
+  { "path": "$.items", "expected": { "$length": { "$between": [1, 5] } } },
+  { "path": "$.items", "expected": { "$contains": ["required-item"] } }
+]
+```
+
 ## Regex matching
 
 ```json
