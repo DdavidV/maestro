@@ -30,6 +30,11 @@ defmodule Maestro.Matchers.JsonMatch do
       matching element somewhere in `actual`, extra elements in `actual`
       are fine. Matched **greedily** (consume-once, first-fit, not full
       bipartite matching).
+    * `%{"$excludes" => [...]}` (value, in place of a bare array) the
+      negative counterpart to `$contains`: none of the listed items may
+      match any element of `actual`. Simpler than `$contains` no
+      consume-once/greedy concerns apply, since every excluded item is
+      checked against the *whole* list independently.
     * bare `[...]` (value) ordered, exact-length, index-by-index match.
       This is the default. `"$expected"` may appear as an element at any
       index (a positional wildcard: there must be an element there, its
@@ -68,6 +73,7 @@ defmodule Maestro.Matchers.JsonMatch do
   @expected "$expected"
   @closed_key "$_"
   @contains_key "$contains"
+  @excludes_key "$excludes"
   @regex_key "$regex"
   @mfa_key "$mfa"
 
@@ -90,6 +96,10 @@ defmodule Maestro.Matchers.JsonMatch do
 
   defp match_value(%{@contains_key => wanted} = m, actual) when map_size(m) == 1 do
     match_contains(wanted, actual)
+  end
+
+  defp match_value(%{@excludes_key => excluded} = m, actual) when map_size(m) == 1 do
+    match_excludes(excluded, actual)
   end
 
   defp match_value(%{@regex_key => pattern} = m, actual) when map_size(m) == 1 do
@@ -243,6 +253,19 @@ defmodule Maestro.Matchers.JsonMatch do
       {before, [_match | rest]} -> {:ok, before ++ rest}
     end
   end
+
+  defp match_excludes(excluded, actual) when is_list(excluded) and is_list(actual) do
+    excluded
+    |> Enum.with_index()
+    |> Enum.reduce_while(:ok, fn {item, index}, :ok ->
+      case Enum.find_index(actual, &(match_value(item, &1) == :ok)) do
+        nil -> {:cont, :ok}
+        found_at -> {:halt, {:error, {:excluded_item_found, index, found_at, item}}}
+      end
+    end)
+  end
+
+  defp match_excludes(_excluded, actual), do: {:error, {:type_mismatch, :list_expected, actual}}
 
   defp match_regex(pattern, actual) when is_binary(pattern) and is_binary(actual) do
     case Regex.compile(pattern) do

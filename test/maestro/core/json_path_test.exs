@@ -79,5 +79,10 @@ defmodule Maestro.Core.JsonPathTest do
     test "a numeric segment against a map is looked up as a literal key, not an index" do
       assert JsonPath.extract(%{"0" => "zero"}, "$.0") == {:ok, "zero"}
     end
+
+    test "the same path resolves against either shape: a list by index or a map by literal key" do
+      assert JsonPath.extract(%{"data" => ["x", "a"]}, "$.data.1") == {:ok, "a"}
+      assert JsonPath.extract(%{"data" => %{"1" => "a"}}, "$.data.1") == {:ok, "a"}
+    end
   end
 end

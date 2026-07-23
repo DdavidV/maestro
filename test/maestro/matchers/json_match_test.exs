@@ -263,6 +263,53 @@ defmodule Maestro.Matchers.JsonMatchTest do
     end
   end
 
+  describe "$excludes" do
+    test "passes when none of the excluded items appear in actual" do
+      expected = %{"$excludes" => [99, 100]}
+      assert match(expected, [1, 2, 3]) == :ok
+    end
+
+    test "fails with the excluded item's index and where it was found" do
+      expected = %{"$excludes" => [1, 2]}
+      assert match(expected, [5, 2, 7]) == {:error, {:excluded_item_found, 1, 1, 2}}
+    end
+
+    test "an empty excluded list trivially passes" do
+      assert match(%{"$excludes" => []}, [1, 2, 3]) == :ok
+      assert match(%{"$excludes" => []}, []) == :ok
+    end
+
+    test "matches structurally, not just by literal equality" do
+      expected = %{"$excludes" => [%{"key" => "val"}]}
+      assert match(expected, [%{"key" => "other"}, %{"other" => "field"}]) == :ok
+
+      assert match(expected, [%{"key" => "val", "extra" => "ignored"}]) ==
+               {:error, {:excluded_item_found, 0, 0, %{"key" => "val"}}}
+    end
+
+    test "against a non-list actual is a type mismatch" do
+      assert match(%{"$excludes" => [1]}, "not a list") ==
+               {:error, {:type_mismatch, :list_expected, "not a list"}}
+    end
+
+    test "nested directives inside an excluded item still apply" do
+      expected = %{"$excludes" => [%{"id" => "$expected"}]}
+      # any object with an "id" key is excluded, so this actual violates it
+      assert match(expected, [%{"id" => 1}]) ==
+               {:error, {:excluded_item_found, 0, 0, %{"id" => "$expected"}}}
+
+      assert match(expected, [%{"name" => "no id here"}]) == :ok
+    end
+
+    test "templating resolves before exclusion is checked" do
+      expected = %{"$excludes" => ["{{banned}}"]}
+      assert match(expected, ["a", "b"], %{"banned" => "c"}) == :ok
+
+      assert match(expected, ["a", "b"], %{"banned" => "a"}) ==
+               {:error, {:excluded_item_found, 0, 0, "a"}}
+    end
+  end
+
   describe "$regex" do
     test "a matching pattern passes" do
       assert match(%{"$regex" => "^ORD-\\d+$"}, "ORD-123") == :ok
