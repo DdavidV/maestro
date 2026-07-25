@@ -3,7 +3,8 @@
 `json_match` is Maestro's built-in assertion matcher a KATT-inspired engine
 for checking a step's response against an expected JSON shape. It's the
 default matcher: if a step's `assert` entry doesn't name one, `json_match` is
-used automatically.
+used automatically. For checking a response against a JSON Schema contract
+instead of exact values, see [`json_schema_match`](json_schema_match.md).
 
 Every example below is a complete `assert` entry as it would appear in a
 step, and every example has been checked against the actual matcher

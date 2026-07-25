@@ -40,3 +40,9 @@ the step (or scenario call) runs once per row automatically.
 These building blocks are formalized as JSON Schema documents in [`priv/schemas/`](priv/schemas/):
 
 Each schema file includes worked `examples` that double as fixtures for validating the format.
+
+## Further reading
+
+- [docs/json_match.md](docs/json_match.md) the default assertion matcher, for structural/value matching.
+- [docs/json_schema_match.md](docs/json_schema_match.md) an assertion matcher for validating a response
+  against a JSON Schema contract.
