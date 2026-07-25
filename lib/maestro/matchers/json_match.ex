@@ -73,10 +73,76 @@ defmodule Maestro.Matchers.JsonMatch do
   wanting that would need `actual` to literally have a `"$contains"` key
   too. Documented edge case, not specially handled: vanishingly unlikely to
   matter in practice.
+
+  ## Failure reporting
+
+  A failing match returns `{:error, reasons}` where `reasons` is a
+  `[Maestro.Assert.Reason.t()]` **every** mismatch found in one pass, not
+  just the first (see `Maestro.Assert.Reason` for the `expected`/`actual`/
+  `path` fields referenced below). Every `reason` atom this matcher can
+  produce:
+
+    * `:not_equal` scalar `expected`/`actual` differ.
+    * `:object_expected` / `:list_expected` `expected`'s shape (object or
+      list) doesn't match `actual`'s type. `expected` is `nil` for the
+      three list-only directives (`$contains`/`$excludes`/`$length`)
+      there's no single "expected value" to show, only "a list was
+      required here."
+    * `:expected_key_missing` a `"$expected"` key, or an ordinarily-keyed
+      field, is absent from `actual`. `path` includes the missing key.
+    * `:unexpected_key_present` a `"$unexpected"` key is present in
+      `actual`. `actual` is that key's value from the response `path`
+      already locates which key, so `actual` doesn't repeat it.
+    * `:invalid_closed_object_directive` `"$_"` was paired with something
+      other than `"$unexpected"`.
+    * `:unexpected_extra_keys` a closed object (`"$_" => "$unexpected"`)
+      has keys beyond those named. `expected`/`actual` are the sorted
+      allowed-key list and sorted actual-key list, respectively.
+    * `:length_mismatch` an ordered list's length doesn't match
+      `expected`'s (bare-array matching, not the `$length` directive).
+      Reported alongside any paired-index element mismatches, not instead
+      of them.
+    * `:invalid_unexpected_position` a `"$unexpected"` element appears
+      somewhere other than the last position of an ordered list.
+    * `:contains_item_not_found` a `$contains` item has no match anywhere
+      in `actual`. `expected` is that item, `actual` is the whole list.
+    * `:excluded_item_found` a `$excludes` item matched an element of
+      `actual`. `expected` is that item, `actual` is the matching element.
+    * `:length_not_equal` / `:length_not_greater_than` /
+      `:length_not_less_than` / `:length_not_between` a `$length` spec
+      wasn't satisfied. `expected` is the bound(s) from the spec, `actual`
+      is `actual`'s real length.
+    * `:invalid_length_directive` a `$length` spec was malformed (not an
+      integer or a recognized `$gt`/`$lt`/`$between` wrapper).
+    * `:regex_no_match` a `$regex` pattern compiled fine but didn't match.
+    * `:invalid_regex` a `$regex` pattern failed to compile, or was
+      applied to a non-string `actual`, or wasn't itself a string.
+    * `:mfa_check_failed` a `$mfa` call resolved and ran, but returned
+      `false` or `{:error, reason}`. `expected` is `{module, function}`
+      (the resolved atoms, not the original strings).
+    * `:invalid_mfa_result` a `$mfa` call returned something other than
+      `true`/`:ok`/`false`/`{:error, _}`.
+    * `:mfa_error` `Maestro.Core.SafeMFA.apply/3` itself failed module/
+      function resolution, or the call raised (see its `t:reason/0`  for
+      the exact `actual` shapes: `:mfa_module_not_found`,
+      `:mfa_function_not_found`, `:mfa_not_exported`, `:mfa_raised`).
+    * `:invalid_mfa_directive` `$mfa`'s payload wasn't
+      `%{"module" => ..., "function" => ...}`.
+    * `:interpolation_failed` a `{{placeholder}}` in `expected` didn't
+      resolve against `context`. `expected` is the missing key name,
+      `actual` is `nil` there's no response value to show when
+      `expected` itself never finished rendering.
+    * `:path_not_found` the assertion's own `path` didn't resolve against
+      `actual` (via `Maestro.Core.JsonPath`) this one always short-
+      circuits as the sole entry in `reasons`, since nothing else can be
+      checked without a target. `expected` is the `path` string itself,
+      `actual` is `nil` there's no resolved value to show when the path
+      never resolved to one.
   """
 
   use Maestro.Assert.Matcher, name: "json_match"
 
+  alias Maestro.Assert.Reason
   alias Maestro.Core.Interpolation
   alias Maestro.Core.JsonPath
   alias Maestro.Core.SafeMFA
@@ -95,110 +161,143 @@ defmodule Maestro.Matchers.JsonMatch do
 
   @impl true
   def match(assertion, actual, context) do
-    with {:ok, target} <- select_target(assertion, actual),
-         {:ok, expected} <- Interpolation.render(assertion.expected, context) do
-      match_value(expected, target)
+    root_path = Map.get(assertion, :path)
+
+    case select_target(assertion, actual, root_path) do
+      {:ok, target} ->
+        case Interpolation.render(assertion.expected, context) do
+          {:ok, expected} ->
+            case match_value(expected, target, root_path) do
+              [] -> :ok
+              reasons -> {:error, reasons}
+            end
+
+          {:error, {:missing_interpolation_key, key}} ->
+            {:error, [Reason.new(:interpolation_failed, key, nil, root_path)]}
+        end
+
+      {:error, reason} ->
+        {:error, [reason]}
     end
   end
 
-  defp select_target(%{path: path}, actual) do
+  defp select_target(%{path: path}, actual, _root_path) do
     case JsonPath.extract(actual, path) do
       {:ok, value} -> {:ok, value}
-      {:error, reason} -> {:error, {:path_not_found, path, reason}}
+      {:error, _reason} -> {:error, Reason.new(:path_not_found, path, nil)}
     end
   end
 
-  defp select_target(_assertion, actual), do: {:ok, actual}
+  defp select_target(_assertion, actual, _root_path), do: {:ok, actual}
 
-  defp match_value(%{@contains_key => wanted} = m, actual) when map_size(m) == 1 do
-    match_contains(wanted, actual)
+  # Every match_* clause returns [Reason.t()] -- [] means "matched".
+
+  defp match_value(%{@contains_key => wanted} = m, actual, path) when map_size(m) == 1 do
+    match_contains(wanted, actual, path)
   end
 
-  defp match_value(%{@excludes_key => excluded} = m, actual) when map_size(m) == 1 do
-    match_excludes(excluded, actual)
+  defp match_value(%{@excludes_key => excluded} = m, actual, path) when map_size(m) == 1 do
+    match_excludes(excluded, actual, path)
   end
 
-  defp match_value(%{@length_key => spec} = m, actual) when map_size(m) == 1 do
-    match_length(spec, actual)
+  defp match_value(%{@length_key => spec} = m, actual, path) when map_size(m) == 1 do
+    match_length(spec, actual, path)
   end
 
-  defp match_value(%{@regex_key => pattern} = m, actual) when map_size(m) == 1 do
-    match_regex(pattern, actual)
+  defp match_value(%{@regex_key => pattern} = m, actual, path) when map_size(m) == 1 do
+    match_regex(pattern, actual, path)
   end
 
-  defp match_value(%{@mfa_key => mfa} = m, actual) when map_size(m) == 1 do
-    match_mfa(mfa, actual)
+  defp match_value(%{@mfa_key => mfa} = m, actual, path) when map_size(m) == 1 do
+    match_mfa(mfa, actual, path)
   end
 
-  defp match_value(expected, actual) when is_map(expected) and is_map(actual) do
-    match_object(expected, actual)
+  defp match_value(expected, actual, path) when is_map(expected) and is_map(actual) do
+    match_object(expected, actual, path)
   end
 
-  defp match_value(expected, actual) when is_map(expected) do
-    {:error, {:type_mismatch, :object_expected, actual}}
+  defp match_value(expected, actual, path) when is_map(expected) do
+    [Reason.new(:object_expected, expected, actual, path)]
   end
 
-  defp match_value(expected, actual) when is_list(expected) and is_list(actual) do
-    match_ordered(expected, actual)
+  defp match_value(expected, actual, path) when is_list(expected) and is_list(actual) do
+    match_ordered(expected, actual, path)
   end
 
-  defp match_value(expected, actual) when is_list(expected) do
-    {:error, {:type_mismatch, :list_expected, actual}}
+  defp match_value(expected, actual, path) when is_list(expected) do
+    [Reason.new(:list_expected, expected, actual, path)]
   end
 
-  defp match_value(expected, actual) do
-    if expected == actual, do: :ok, else: {:error, {:not_equal, expected, actual}}
+  defp match_value(expected, actual, path) do
+    if expected == actual, do: [], else: [Reason.new(:not_equal, expected, actual, path)]
   end
 
-  defp match_object(expected, actual) do
-    with {:ok, closed?, fields} <- split_closed(expected),
-         :ok <- match_fields(fields, actual) do
-      if closed?, do: check_closed(fields, actual), else: :ok
+  defp match_object(expected, actual, path) do
+    case split_closed(expected, actual, path) do
+      {:ok, closed?, fields} ->
+        field_reasons = match_fields(fields, actual, path)
+        closed_reasons = if closed?, do: check_closed(fields, actual, path), else: []
+        field_reasons ++ closed_reasons
+
+      {:error, reason} ->
+        [reason]
     end
   end
 
-  defp split_closed(expected) do
+  defp split_closed(expected, _actual, path) do
     case Map.fetch(expected, @closed_key) do
       {:ok, @unexpected} -> {:ok, true, Map.delete(expected, @closed_key)}
-      {:ok, other} -> {:error, {:invalid_closed_object_directive, other}}
+      {:ok, other} -> {:error, Reason.new(:invalid_closed_object_directive, other, nil, path)}
       :error -> {:ok, false, expected}
     end
   end
 
-  defp match_fields(fields, actual) do
-    Enum.reduce_while(fields, :ok, fn {key, value}, :ok ->
-      case match_field(key, value, actual) do
-        :ok -> {:cont, :ok}
-        error -> {:halt, error}
-      end
-    end)
+  defp match_fields(fields, actual, path) do
+    Enum.flat_map(fields, fn {key, value} -> match_field(key, value, actual, path) end)
   end
 
-  defp match_field(key, @unexpected, actual) do
-    if Map.has_key?(actual, key), do: {:error, {:unexpected_key_present, key}}, else: :ok
-  end
-
-  defp match_field(key, @expected, actual) do
-    if Map.has_key?(actual, key), do: :ok, else: {:error, {:expected_key_missing, key}}
-  end
-
-  defp match_field(key, expected_value, actual) do
+  defp match_field(key, @unexpected, actual, path) do
     case Map.fetch(actual, key) do
-      {:ok, actual_value} ->
-        case match_value(expected_value, actual_value) do
-          :ok -> :ok
-          {:error, reason} -> {:error, {:field_mismatch, key, reason}}
-        end
+      {:ok, value} ->
+        [Reason.new(:unexpected_key_present, @unexpected, value, field_path(path, key))]
 
       :error ->
-        {:error, {:expected_key_missing, key}}
+        []
     end
   end
 
-  defp check_closed(fields, actual) do
+  defp match_field(key, @expected, actual, path) do
+    if Map.has_key?(actual, key) do
+      []
+    else
+      [Reason.new(:expected_key_missing, @expected, nil, field_path(path, key))]
+    end
+  end
+
+  defp match_field(key, expected_value, actual, path) do
+    case Map.fetch(actual, key) do
+      {:ok, actual_value} ->
+        match_value(expected_value, actual_value, field_path(path, key))
+
+      :error ->
+        [Reason.new(:expected_key_missing, expected_value, nil, field_path(path, key))]
+    end
+  end
+
+  defp check_closed(fields, actual, path) do
     case Map.keys(actual) -- Map.keys(fields) do
-      [] -> :ok
-      extra -> {:error, {:unexpected_extra_keys, extra}}
+      [] ->
+        []
+
+      _extra ->
+        [
+          Reason.new(
+            :unexpected_extra_keys,
+            Enum.sort(Map.keys(fields)),
+            Enum.sort(Map.keys(actual)),
+            path
+          )
+        ]
     end
   end
 
@@ -210,158 +309,171 @@ defmodule Maestro.Matchers.JsonMatch do
   # positional restriction: at any index it just means "there is an
   # element here, don't check its value" (a within-bounds guarantee that
   # either length check below already establishes).
-  defp match_ordered(expected, actual) do
+  defp match_ordered(expected, actual, path) do
     case Enum.find_index(expected, &(&1 == @unexpected)) do
       nil ->
-        match_ordered_exact(expected, actual)
+        match_ordered_exact(expected, actual, path)
 
       index when index == length(expected) - 1 ->
-        match_ordered_closed(Enum.slice(expected, 0, index), actual)
+        match_ordered_closed(Enum.slice(expected, 0, index), actual, path)
 
       index ->
-        {:error, {:invalid_unexpected_position, index, length(expected)}}
+        [Reason.new(:invalid_unexpected_position, index, length(expected), path)]
     end
   end
 
-  defp match_ordered_exact(expected, actual) when length(expected) != length(actual) do
-    {:error, {:length_mismatch, length(expected), length(actual)}}
+  defp match_ordered_exact(expected, actual, path) when length(expected) != length(actual) do
+    [Reason.new(:length_mismatch, length(expected), length(actual), path)] ++
+      match_ordered_pairs(expected, actual, path)
   end
 
-  defp match_ordered_exact(expected, actual), do: match_ordered_pairs(expected, actual)
+  defp match_ordered_exact(expected, actual, path),
+    do: match_ordered_pairs(expected, actual, path)
 
-  defp match_ordered_closed(required, actual) when length(required) != length(actual) do
-    {:error, {:length_mismatch, length(required), length(actual)}}
+  defp match_ordered_closed(required, actual, path) when length(required) != length(actual) do
+    [Reason.new(:length_mismatch, length(required), length(actual), path)] ++
+      match_ordered_pairs(required, actual, path)
   end
 
-  defp match_ordered_closed(required, actual), do: match_ordered_pairs(required, actual)
+  defp match_ordered_closed(required, actual, path),
+    do: match_ordered_pairs(required, actual, path)
 
-  defp match_ordered_pairs(expected, actual) do
+  defp match_ordered_pairs(expected, actual, path) do
     expected
     |> Enum.zip(actual)
     |> Enum.with_index()
-    |> Enum.reduce_while(:ok, fn {{exp, act}, index}, :ok ->
-      case match_ordered_element(exp, act) do
-        :ok -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, {:index_mismatch, index, reason}}}
-      end
+    |> Enum.flat_map(fn {{exp, act}, index} ->
+      match_ordered_element(exp, act, index_path(path, index))
     end)
   end
 
-  defp match_ordered_element(@expected, _actual), do: :ok
-  defp match_ordered_element(expected, actual), do: match_value(expected, actual)
+  defp match_ordered_element(@expected, _actual, _path), do: []
+  defp match_ordered_element(expected, actual, path), do: match_value(expected, actual, path)
 
-  defp match_contains(wanted, actual) when is_list(wanted) and is_list(actual) do
-    wanted
-    |> Enum.with_index()
-    |> Enum.reduce_while({:ok, actual}, fn {item, index}, {:ok, remaining} ->
-      case take_first_match(item, remaining) do
-        {:ok, rest} -> {:cont, {:ok, rest}}
-        :error -> {:halt, {:error, {:contains_item_not_found, index, item}}}
-      end
-    end)
-    |> case do
-      {:ok, _remaining} -> :ok
-      error -> error
-    end
+  defp match_contains(wanted, actual, path) when is_list(wanted) and is_list(actual) do
+    {_remaining, reasons} =
+      Enum.reduce(wanted, {actual, []}, fn item, {remaining, reasons} ->
+        case take_first_match(item, remaining) do
+          {:ok, rest} ->
+            {rest, reasons}
+
+          :error ->
+            {remaining, reasons ++ [Reason.new(:contains_item_not_found, item, actual, path)]}
+        end
+      end)
+
+    reasons
   end
 
-  defp match_contains(_wanted, actual), do: {:error, {:type_mismatch, :list_expected, actual}}
+  defp match_contains(_wanted, actual, path) do
+    [Reason.new(:list_expected, nil, actual, path)]
+  end
 
   defp take_first_match(item, remaining) do
-    case Enum.split_while(remaining, &(match_value(item, &1) != :ok)) do
+    case Enum.split_while(remaining, &(match_value(item, &1, nil) != [])) do
       {_before, []} -> :error
       {before, [_match | rest]} -> {:ok, before ++ rest}
     end
   end
 
-  defp match_excludes(excluded, actual) when is_list(excluded) and is_list(actual) do
-    excluded
-    |> Enum.with_index()
-    |> Enum.reduce_while(:ok, fn {item, index}, :ok ->
-      case Enum.find_index(actual, &(match_value(item, &1) == :ok)) do
-        nil -> {:cont, :ok}
-        found_at -> {:halt, {:error, {:excluded_item_found, index, found_at, item}}}
+  defp match_excludes(excluded, actual, path) when is_list(excluded) and is_list(actual) do
+    Enum.flat_map(excluded, fn item ->
+      case Enum.find(actual, &(match_value(item, &1, nil) == [])) do
+        nil -> []
+        found -> [Reason.new(:excluded_item_found, item, found, path)]
       end
     end)
   end
 
-  defp match_excludes(_excluded, actual), do: {:error, {:type_mismatch, :list_expected, actual}}
-
-  defp match_length(spec, actual) when is_list(actual) do
-    match_length_spec(spec, length(actual))
+  defp match_excludes(_excluded, actual, path) do
+    [Reason.new(:list_expected, nil, actual, path)]
   end
 
-  defp match_length(_spec, actual), do: {:error, {:type_mismatch, :list_expected, actual}}
+  defp match_length(spec, actual, path) when is_list(actual) do
+    match_length_spec(spec, length(actual), path)
+  end
 
-  defp match_length_spec(expected_length, actual_length) when is_integer(expected_length) do
+  defp match_length(_spec, actual, path) do
+    [Reason.new(:list_expected, nil, actual, path)]
+  end
+
+  defp match_length_spec(expected_length, actual_length, path) when is_integer(expected_length) do
     if actual_length == expected_length,
-      do: :ok,
-      else: {:error, {:length_not_equal, expected_length, actual_length}}
+      do: [],
+      else: [Reason.new(:length_not_equal, expected_length, actual_length, path)]
   end
 
-  defp match_length_spec(%{@gt_key => min} = m, actual_length) when map_size(m) == 1 do
+  defp match_length_spec(%{@gt_key => min} = m, actual_length, path) when map_size(m) == 1 do
     if actual_length > min,
-      do: :ok,
-      else: {:error, {:length_not_greater_than, min, actual_length}}
+      do: [],
+      else: [Reason.new(:length_not_greater_than, min, actual_length, path)]
   end
 
-  defp match_length_spec(%{@lt_key => max} = m, actual_length) when map_size(m) == 1 do
+  defp match_length_spec(%{@lt_key => max} = m, actual_length, path) when map_size(m) == 1 do
     if actual_length < max,
-      do: :ok,
-      else: {:error, {:length_not_less_than, max, actual_length}}
+      do: [],
+      else: [Reason.new(:length_not_less_than, max, actual_length, path)]
   end
 
-  defp match_length_spec(%{@between_key => [min, max]} = m, actual_length)
+  defp match_length_spec(%{@between_key => [min, max]} = m, actual_length, path)
        when map_size(m) == 1 do
     if actual_length >= min and actual_length <= max,
-      do: :ok,
-      else: {:error, {:length_not_between, min, max, actual_length}}
+      do: [],
+      else: [Reason.new(:length_not_between, [min, max], actual_length, path)]
   end
 
-  defp match_length_spec(spec, _actual_length), do: {:error, {:invalid_length_directive, spec}}
+  defp match_length_spec(spec, _actual_length, path) do
+    [Reason.new(:invalid_length_directive, spec, nil, path)]
+  end
 
-  defp match_regex(pattern, actual) when is_binary(pattern) and is_binary(actual) do
+  defp match_regex(pattern, actual, path) when is_binary(pattern) and is_binary(actual) do
     case Regex.compile(pattern) do
       {:ok, regex} ->
         if Regex.match?(regex, actual),
-          do: :ok,
-          else: {:error, {:regex_no_match, pattern, actual}}
+          do: [],
+          else: [Reason.new(:regex_no_match, pattern, actual, path)]
 
       {:error, reason} ->
-        {:error, {:invalid_regex, pattern, reason}}
+        [Reason.new(:invalid_regex, pattern, reason, path)]
     end
   end
 
-  defp match_regex(pattern, actual) when is_binary(pattern) do
-    {:error, {:regex_requires_string, pattern, actual}}
+  defp match_regex(pattern, actual, path) when is_binary(pattern) do
+    [Reason.new(:invalid_regex, pattern, actual, path)]
   end
 
-  defp match_regex(pattern, _actual), do: {:error, {:invalid_regex_directive, pattern}}
+  defp match_regex(pattern, actual, path), do: [Reason.new(:invalid_regex, pattern, actual, path)]
 
-  defp match_mfa(%{"module" => mod_str, "function" => fun_str} = mfa, actual)
+  defp match_mfa(%{"module" => mod_str, "function" => fun_str} = mfa, actual, path)
        when is_binary(mod_str) and is_binary(fun_str) do
     args = Map.get(mfa, "args", [])
 
     case SafeMFA.apply(mod_str, fun_str, [actual | args]) do
       {:ok, _module, _function, true} ->
-        :ok
+        []
 
       {:ok, _module, _function, :ok} ->
-        :ok
+        []
 
       {:ok, module, function, false} ->
-        {:error, {:mfa_check_failed, module, function}}
+        [Reason.new(:mfa_check_failed, {module, function}, actual, path)]
 
       {:ok, module, function, {:error, reason}} ->
-        {:error, {:mfa_check_failed, module, function, reason}}
+        [Reason.new(:mfa_check_failed, {module, function}, reason, path)]
 
       {:ok, _module, _function, other} ->
-        {:error, {:invalid_mfa_result, other}}
+        [Reason.new(:invalid_mfa_result, mfa, other, path)]
 
       {:error, reason} ->
-        {:error, reason}
+        [Reason.new(:mfa_error, mfa, reason, path)]
     end
   end
 
-  defp match_mfa(mfa, _actual), do: {:error, {:invalid_mfa_directive, mfa}}
+  defp match_mfa(mfa, actual, path), do: [Reason.new(:invalid_mfa_directive, mfa, actual, path)]
+
+  defp field_path(nil, key), do: ".#{key}"
+  defp field_path(path, key), do: "#{path}.#{key}"
+
+  defp index_path(nil, index), do: "[#{index}]"
+  defp index_path(path, index), do: "#{path}[#{index}]"
 end

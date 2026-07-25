@@ -46,7 +46,11 @@ defmodule Maestro.Core.InterpolationTest do
       context = %{"order_id" => "123", "total" => 42}
 
       assert Interpolation.render(
-               %{"event" => "order_created", "order_id" => "{{order_id}}", "total" => "{{total}}"},
+               %{
+                 "event" => "order_created",
+                 "order_id" => "{{order_id}}",
+                 "total" => "{{total}}"
+               },
                context
              ) == {:ok, %{"event" => "order_created", "order_id" => "123", "total" => 42}}
     end
@@ -120,7 +124,9 @@ defmodule Maestro.Core.InterpolationTest do
 
     test "a missing key buried several levels deep in map/list nesting still errors" do
       broken = %{"a" => [%{"b" => [%{"c" => "{{missing}}"}]}]}
-      assert Interpolation.render(broken, %{}) == {:error, {:missing_interpolation_key, "missing"}}
+
+      assert Interpolation.render(broken, %{}) ==
+               {:error, {:missing_interpolation_key, "missing"}}
     end
   end
 

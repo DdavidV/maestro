@@ -8,15 +8,10 @@ defmodule Maestro.Core.AssertRunner do
   unaffected.
   """
 
+  alias Maestro.Assert.AssertionResult
+  alias Maestro.Assert.Reason
   alias Maestro.Assert.Registry
   alias Maestro.Core.Interpolation
-
-  @type assertion_result :: %{
-          status: :ok | :error,
-          reason: term | nil,
-          assertion: Maestro.assertion(),
-          actual: term
-        }
 
   @doc """
   Runs every entry in `assertions` against `actual`, returning the
@@ -24,7 +19,7 @@ defmodule Maestro.Core.AssertRunner do
   individual result.
   """
   @spec run_assertions([Maestro.assertion()], actual :: term, Interpolation.context()) ::
-          {:ok | :error, [assertion_result]}
+          {:ok | :error, [AssertionResult.t()]}
   def run_assertions(assertions, actual, context) do
     results = Enum.map(assertions, &run_assertion(&1, actual, context))
     status = if Enum.all?(results, &(&1.status == :ok)), do: :ok, else: :error
@@ -32,17 +27,28 @@ defmodule Maestro.Core.AssertRunner do
   end
 
   defp run_assertion(%{matcher: name} = assertion, actual, context) do
-    base = %{assertion: assertion, actual: actual}
-
     case Registry.fetch(name) do
       {:ok, module} ->
         case module.match(assertion, actual, context) do
-          :ok -> Map.merge(base, %{status: :ok, reason: nil})
-          {:error, reason} -> Map.merge(base, %{status: :error, reason: reason})
+          :ok ->
+            %AssertionResult{status: :ok, assertion: assertion, actual: actual, reasons: []}
+
+          {:error, reasons} ->
+            %AssertionResult{
+              status: :error,
+              assertion: assertion,
+              actual: actual,
+              reasons: reasons
+            }
         end
 
-      {:error, reason} ->
-        Map.merge(base, %{status: :error, reason: reason})
+      {:error, _reason} ->
+        %AssertionResult{
+          status: :error,
+          assertion: assertion,
+          actual: actual,
+          reasons: [Reason.new(:matcher_not_found, name, nil)]
+        }
     end
   end
 end

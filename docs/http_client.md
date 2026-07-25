@@ -217,3 +217,9 @@ Any status code (including 4xx/5xx) is still `{:ok, response}` an HTTP
 error response is a normal, successful dispatch as far as the client is
 concerned; it's `assert`'s job to decide whether `status: 500` is
 acceptable for a given step.
+
+A `send/2` failure like the ones above doesn't crash the run: it's caught
+by `Maestro.Core.Runner.Step` and reported on the failed step as a
+`Maestro.Client.Error` (`stage: :send, reason: :send_failed, details:
+<the tuple above>`), the same structured shape any client's dispatch
+failure ends up in, not just this one.

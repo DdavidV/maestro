@@ -1,10 +1,16 @@
 defmodule Maestro.Matchers.JsonSchemaMatchTest do
   use ExUnit.Case, async: true
 
+  alias Maestro.Assert.Reason
   alias Maestro.Matchers.JsonSchemaMatch
 
   defp match(expected, actual, context \\ %{}) do
     JsonSchemaMatch.match(%{expected: expected}, actual, context)
+  end
+
+  defp reasons(expected, actual, context \\ %{}) do
+    assert {:error, reasons} = match(expected, actual, context)
+    reasons
   end
 
   describe "name/0" do
@@ -22,10 +28,8 @@ defmodule Maestro.Matchers.JsonSchemaMatchTest do
     end
 
     test "a mismatching scalar type fails with a schema_validation_failed reason" do
-      assert {:error, {:schema_validation_failed, reasons}} =
-               match(%{"type" => "string"}, 42)
-
-      assert [{_message, "#"}] = reasons
+      assert [%Reason{reason: :schema_validation_failed, path: "#"}] =
+               reasons(%{"type" => "string"}, 42)
     end
   end
 
@@ -49,25 +53,37 @@ defmodule Maestro.Matchers.JsonSchemaMatchTest do
     end
 
     test "a missing required field fails" do
-      assert {:error, {:schema_validation_failed, reasons}} =
-               match(@schema, %{"status" => "confirmed"})
+      assert [%Reason{reason: :schema_validation_failed, actual: message, path: "#"}] =
+               reasons(@schema, %{"status" => "confirmed"})
 
-      assert [{message, "#"}] = reasons
       assert message =~ "id"
     end
 
     test "a value outside the enum fails" do
-      assert {:error, {:schema_validation_failed, reasons}} =
-               match(@schema, %{"id" => 1, "status" => "cancelled"})
-
-      assert [{_message, "#/status"}] = reasons
+      assert [%Reason{reason: :schema_validation_failed, path: "#/status"}] =
+               reasons(@schema, %{"id" => 1, "status" => "cancelled"})
     end
 
     test "additionalProperties: false rejects extra fields" do
       schema = Map.put(@schema, "additionalProperties", false)
       actual = %{"id" => 1, "status" => "confirmed", "extra" => "field"}
 
-      assert {:error, {:schema_validation_failed, _reasons}} = match(schema, actual)
+      assert [%Reason{reason: :schema_validation_failed} | _] = reasons(schema, actual)
+    end
+
+    test "multiple independent violations are all reported, not just the first" do
+      schema = %{
+        "type" => "object",
+        "properties" => %{
+          "id" => %{"type" => "integer"},
+          "status" => %{"type" => "string"}
+        }
+      }
+
+      assert [
+               %Reason{reason: :schema_validation_failed, path: "#/id"},
+               %Reason{reason: :schema_validation_failed, path: "#/status"}
+             ] = reasons(schema, %{"id" => "wrong", "status" => 5})
     end
   end
 
@@ -83,23 +99,23 @@ defmodule Maestro.Matchers.JsonSchemaMatchTest do
     end
 
     test "an element of the wrong type fails" do
-      assert {:error, {:schema_validation_failed, reasons}} = match(@schema, [1, "two"])
-      assert [{_message, "#/1"}] = reasons
+      assert [%Reason{reason: :schema_validation_failed, path: "#/1"}] =
+               reasons(@schema, [1, "two"])
     end
 
     test "an empty array fails minItems" do
-      assert {:error, {:schema_validation_failed, _reasons}} = match(@schema, [])
+      assert [%Reason{reason: :schema_validation_failed}] = reasons(@schema, [])
     end
   end
 
   describe "malformed schemas" do
     test "a schema that fails meta-schema validation is a normal error, not a crash" do
-      assert {:error, {:invalid_schema, _message}} =
-               match(%{"type" => "not_a_real_type"}, "anything")
+      assert [%Reason{reason: :invalid_schema}] =
+               reasons(%{"type" => "not_a_real_type"}, "anything")
     end
 
     test "a non-map expected is a normal error, not a crash" do
-      assert {:error, {:invalid_schema, _message}} = match("not a schema", "anything")
+      assert [%Reason{reason: :invalid_schema}] = reasons("not a schema", "anything")
     end
   end
 
@@ -116,7 +132,15 @@ defmodule Maestro.Matchers.JsonSchemaMatchTest do
       schema = %{"type" => "object"}
 
       assert JsonSchemaMatch.match(%{expected: schema, path: "$.missing"}, actual, %{}) ==
-               {:error, {:path_not_found, "$.missing", {:missing_key, "missing"}}}
+               {:error,
+                [
+                  %Reason{
+                    reason: :path_not_found,
+                    expected: "$.missing",
+                    actual: nil,
+                    path: nil
+                  }
+                ]}
     end
   end
 
@@ -132,12 +156,12 @@ defmodule Maestro.Matchers.JsonSchemaMatchTest do
       context = %{"allowed_status" => "confirmed"}
 
       assert match(schema, %{"status" => "confirmed"}, context) == :ok
-      assert {:error, _reason} = match(schema, %{"status" => "pending"}, context)
+      assert {:error, _reasons} = match(schema, %{"status" => "pending"}, context)
     end
 
     test "a placeholder referencing a missing context key is a hard error" do
       schema = %{"type" => "{{missing}}"}
-      assert {:error, _reason} = match(schema, "anything", %{})
+      assert {:error, _reasons} = match(schema, "anything", %{})
     end
   end
 end

@@ -21,6 +21,17 @@ defmodule Maestro.Assert.Matcher do
   decides what inside its own fields needs templating and when. The
   built-in `Maestro.Matchers.JsonMatch` interpolates `expected` but
   not `path`, for example.
+
+  `match/3` returns bare `:ok` on a pass (nothing to report) or
+  `{:error, reasons}` on a fail, where `reasons` is a non-empty list of
+  `Maestro.Assert.Reason.t()`, one entry per distinct problem found. A
+  matcher that only ever finds at most one problem per call can just
+  return a single-element list. A matcher that can find several
+  independent problems in one pass (e.g. `Maestro.Matchers.JsonMatch`
+  checking every field of an object) is expected to report all of them,
+  not just the first. This keeps every matcher's failure output in a
+  shared, structured shape that a generic consumer (e.g. a report) can
+  render without knowing that matcher's internals.
   """
 
   @callback name() :: String.t()
@@ -29,7 +40,7 @@ defmodule Maestro.Assert.Matcher do
               actual :: term,
               context :: Maestro.Core.Interpolation.context()
             ) ::
-              :ok | {:error, term}
+              :ok | {:error, [Maestro.Assert.Reason.t()]}
 
   defmacro __using__(opts) do
     name = Keyword.fetch!(opts, :name)

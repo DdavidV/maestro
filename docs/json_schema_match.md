@@ -97,16 +97,18 @@ By default, object schemas are open extra properties not listed under
 
 This fails if the response has any field other than `id`.
 
-A validation failure's reason is `{:schema_validation_failed, reasons}`,
-where `reasons` is a list of `{message, json_pointer}` pairs one entry per
-schema-validation error, `json_pointer` pointing at exactly where in the
-checked value it went wrong (e.g. `"#/status"`).
+A validation failure reports one problem per schema-validation error found
+not just the first: a response violating several parts of the schema at
+once (a wrong type on one field, a missing required property, an enum
+violation on another) gets every one of them back together, each with its
+own `path` pointing at exactly where in the checked value it went wrong
+(e.g. `"#/status"`).
 
 ## A malformed schema is a normal failure, not a crash
 
 If `expected` itself isn't a valid JSON Schema (a typo like
 `"type": "sting"`, or `expected` not being an object at all), the assertion
-fails with `{:invalid_schema, reason}` rather than crashing the test run:
+fails as a normal, reported problem rather than crashing the test run:
 
 ```json
 { "matcher": "json_schema_match", "expected": { "type": "sting" } }

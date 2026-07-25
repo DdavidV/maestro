@@ -42,6 +42,14 @@ recorded as failed, but every assertion still runs and its own pass/fail
 result is reported (checking assertion #2 doesn't stop just because #1
 failed).
 
+`json_match` itself doesn't stop at the first problem it finds *within* one
+assertion, either: if `expected` is an object with three fields wrong, or a
+list with mismatches at several indices, every one of them is reported
+together, not just the first. Each reported problem carries a `path`
+locating it inside the checked value (e.g. `"$.items[2].id"`), so a
+multi-problem failure is still easy to read even when it spans several
+places in the response.
+
 ## Templating
 
 `expected` can reference the step's dataset fields or previously `save`d
@@ -312,7 +320,8 @@ call). The function should return:
 
 - `true` or `:ok` the check passes
 - `false` the check fails
-- `{:error, reason}` the check fails, `reason` shows up in the report
+- `{:error, reason}` the check fails, `reason` is carried through into the
+  report as-is
 
 **This runs real code from your suite file.** That's the point (it's the
 escape hatch for anything the declarative directives can't express), but it

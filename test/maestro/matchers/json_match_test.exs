@@ -1,6 +1,7 @@
 defmodule Maestro.Matchers.JsonMatchTest do
   use ExUnit.Case, async: true
 
+  alias Maestro.Assert.Reason
   alias Maestro.Matchers.JsonMatch
 
   defmodule Checks do
@@ -22,6 +23,16 @@ defmodule Maestro.Matchers.JsonMatchTest do
     JsonMatch.match(%{expected: expected}, actual, context)
   end
 
+  defp reasons(expected, actual, context \\ %{}) do
+    assert {:error, reasons} = match(expected, actual, context)
+    reasons
+  end
+
+  defp reason(expected, actual, context \\ %{}) do
+    assert [reason] = reasons(expected, actual, context)
+    reason
+  end
+
   describe "scalar equality" do
     test "matching values of every scalar type pass" do
       assert match("abc", "abc") == :ok
@@ -31,9 +42,21 @@ defmodule Maestro.Matchers.JsonMatchTest do
     end
 
     test "mismatching scalars fail with the values" do
-      assert match("abc", "xyz") == {:error, {:not_equal, "abc", "xyz"}}
-      assert match(42, 43) == {:error, {:not_equal, 42, 43}}
-      assert match(true, false) == {:error, {:not_equal, true, false}}
+      assert reason("abc", "xyz") == %Reason{
+               reason: :not_equal,
+               expected: "abc",
+               actual: "xyz",
+               path: nil
+             }
+
+      assert reason(42, 43) == %Reason{reason: :not_equal, expected: 42, actual: 43, path: nil}
+
+      assert reason(true, false) == %Reason{
+               reason: :not_equal,
+               expected: true,
+               actual: false,
+               path: nil
+             }
     end
   end
 
@@ -50,18 +73,38 @@ defmodule Maestro.Matchers.JsonMatchTest do
       assert match(expected, actual) == :ok
     end
 
-    test "one mismatching field fails, tagged with its key" do
+    test "one mismatching field fails, tagged with its path" do
       expected = %{"id" => 1, "name" => "alice"}
       actual = %{"id" => 1, "name" => "bob"}
 
-      assert match(expected, actual) ==
-               {:error, {:field_mismatch, "name", {:not_equal, "alice", "bob"}}}
+      assert reason(expected, actual) == %Reason{
+               reason: :not_equal,
+               expected: "alice",
+               actual: "bob",
+               path: ".name"
+             }
     end
 
     test "a missing expected key fails" do
       expected = %{"id" => 1, "name" => "alice"}
       actual = %{"id" => 1}
-      assert match(expected, actual) == {:error, {:expected_key_missing, "name"}}
+
+      assert reason(expected, actual) == %Reason{
+               reason: :expected_key_missing,
+               expected: "alice",
+               actual: nil,
+               path: ".name"
+             }
+    end
+
+    test "multiple independently-wrong fields are all reported, not just the first" do
+      expected = %{"a" => 1, "b" => 2, "c" => 3}
+      actual = %{"a" => 9, "b" => 2, "c" => 9}
+
+      assert reasons(expected, actual) == [
+               %Reason{reason: :not_equal, expected: 1, actual: 9, path: ".a"},
+               %Reason{reason: :not_equal, expected: 3, actual: 9, path: ".c"}
+             ]
     end
   end
 
@@ -72,7 +115,12 @@ defmodule Maestro.Matchers.JsonMatchTest do
     end
 
     test "$expected: key absent fails" do
-      assert match(%{"token" => "$expected"}, %{}) == {:error, {:expected_key_missing, "token"}}
+      assert reason(%{"token" => "$expected"}, %{}) == %Reason{
+               reason: :expected_key_missing,
+               expected: "$expected",
+               actual: nil,
+               path: ".token"
+             }
     end
 
     test "$unexpected: key absent passes" do
@@ -80,11 +128,19 @@ defmodule Maestro.Matchers.JsonMatchTest do
     end
 
     test "$unexpected: key present fails, even when its value is null" do
-      assert match(%{"internal" => "$unexpected"}, %{"internal" => "leaked"}) ==
-               {:error, {:unexpected_key_present, "internal"}}
+      assert reason(%{"internal" => "$unexpected"}, %{"internal" => "leaked"}) == %Reason{
+               reason: :unexpected_key_present,
+               expected: "$unexpected",
+               actual: "leaked",
+               path: ".internal"
+             }
 
-      assert match(%{"internal" => "$unexpected"}, %{"internal" => nil}) ==
-               {:error, {:unexpected_key_present, "internal"}}
+      assert reason(%{"internal" => "$unexpected"}, %{"internal" => nil}) == %Reason{
+               reason: :unexpected_key_present,
+               expected: "$unexpected",
+               actual: nil,
+               path: ".internal"
+             }
     end
   end
 
@@ -96,22 +152,37 @@ defmodule Maestro.Matchers.JsonMatchTest do
 
     test "one extra key fails" do
       expected = %{"id" => 1, "$_" => "$unexpected"}
+      actual = %{"id" => 1, "extra" => "field"}
 
-      assert match(expected, %{"id" => 1, "extra" => "field"}) ==
-               {:error, {:unexpected_extra_keys, ["extra"]}}
+      assert reason(expected, actual) == %Reason{
+               reason: :unexpected_extra_keys,
+               expected: ["id"],
+               actual: ["extra", "id"],
+               path: nil
+             }
     end
 
     test "closing applies at nested depth too, not just the top level" do
       expected = %{"user" => %{"id" => 1, "$_" => "$unexpected"}}
       actual = %{"user" => %{"id" => 1, "secret" => "leaked"}}
 
-      assert match(expected, actual) ==
-               {:error, {:field_mismatch, "user", {:unexpected_extra_keys, ["secret"]}}}
+      assert reason(expected, actual) == %Reason{
+               reason: :unexpected_extra_keys,
+               expected: ["id"],
+               actual: ["id", "secret"],
+               path: ".user"
+             }
     end
 
     test "an invalid $_ pairing is a hard error, not silently ignored" do
       expected = %{"id" => 1, "$_" => true}
-      assert match(expected, %{"id" => 1}) == {:error, {:invalid_closed_object_directive, true}}
+
+      assert reason(expected, %{"id" => 1}) == %Reason{
+               reason: :invalid_closed_object_directive,
+               expected: true,
+               actual: nil,
+               path: nil
+             }
     end
   end
 
@@ -120,22 +191,46 @@ defmodule Maestro.Matchers.JsonMatchTest do
       assert match([1, 2, 3], [1, 2, 3]) == :ok
     end
 
-    test "wrong order fails at the first mismatching index" do
-      assert match([1, 2, 3], [1, 3, 2]) ==
-               {:error, {:index_mismatch, 1, {:not_equal, 2, 3}}}
+    test "wrong order reports every mismatching index" do
+      assert reasons([1, 2, 3], [1, 3, 2]) == [
+               %Reason{reason: :not_equal, expected: 2, actual: 3, path: "[1]"},
+               %Reason{reason: :not_equal, expected: 3, actual: 2, path: "[2]"}
+             ]
     end
 
-    test "wrong length fails with a length_mismatch, not a per-index error" do
-      assert match([1, 2, 3], [1, 2]) == {:error, {:length_mismatch, 3, 2}}
-      assert match([1, 2], [1, 2, 3]) == {:error, {:length_mismatch, 2, 3}}
+    test "wrong length fails with a length_mismatch, alongside any paired-element mismatches" do
+      assert reason([1, 2, 3], [1, 2]) == %Reason{
+               reason: :length_mismatch,
+               expected: 3,
+               actual: 2,
+               path: nil
+             }
+
+      assert reason([1, 2], [1, 2, 3]) == %Reason{
+               reason: :length_mismatch,
+               expected: 2,
+               actual: 3,
+               path: nil
+             }
     end
 
-    test "an element-level mismatch reports its index and nested reason" do
+    test "an element-level mismatch reports its index and nested path" do
       expected = [%{"id" => 1}, %{"id" => 2}]
       actual = [%{"id" => 1}, %{"id" => 99}]
 
-      assert match(expected, actual) ==
-               {:error, {:index_mismatch, 1, {:field_mismatch, "id", {:not_equal, 2, 99}}}}
+      assert reason(expected, actual) == %Reason{
+               reason: :not_equal,
+               expected: 2,
+               actual: 99,
+               path: "[1].id"
+             }
+    end
+
+    test "multiple mismatching indices are all reported" do
+      assert reasons([1, 2, 3], [9, 2, 9]) == [
+               %Reason{reason: :not_equal, expected: 1, actual: 9, path: "[0]"},
+               %Reason{reason: :not_equal, expected: 3, actual: 9, path: "[2]"}
+             ]
     end
   end
 
@@ -146,7 +241,12 @@ defmodule Maestro.Matchers.JsonMatchTest do
     end
 
     test "$expected still requires an element to actually be there" do
-      assert match(["$expected", "$expected"], [1]) == {:error, {:length_mismatch, 2, 1}}
+      assert reason(["$expected", "$expected"], [1]) == %Reason{
+               reason: :length_mismatch,
+               expected: 2,
+               actual: 1,
+               path: nil
+             }
     end
 
     test "trailing $unexpected means the list ends there, exact prefix required" do
@@ -154,26 +254,50 @@ defmodule Maestro.Matchers.JsonMatchTest do
     end
 
     test "trailing $unexpected still checks the values before it" do
-      assert match([1, 2, "$unexpected"], [1, 99]) ==
-               {:error, {:index_mismatch, 1, {:not_equal, 2, 99}}}
+      assert reason([1, 2, "$unexpected"], [1, 99]) == %Reason{
+               reason: :not_equal,
+               expected: 2,
+               actual: 99,
+               path: "[1]"
+             }
     end
 
     test "trailing $unexpected rejects a list with extra elements beyond the prefix" do
-      assert match([1, 2, "$unexpected"], [1, 2, 3]) == {:error, {:length_mismatch, 2, 3}}
+      assert reason([1, 2, "$unexpected"], [1, 2, 3]) == %Reason{
+               reason: :length_mismatch,
+               expected: 2,
+               actual: 3,
+               path: nil
+             }
     end
 
     test "trailing $unexpected rejects a list shorter than the prefix" do
-      assert match([1, 2, "$unexpected"], [1]) == {:error, {:length_mismatch, 2, 1}}
+      assert reason([1, 2, "$unexpected"], [1]) == %Reason{
+               reason: :length_mismatch,
+               expected: 2,
+               actual: 1,
+               path: nil
+             }
     end
 
     test "a lone $unexpected means the list must be empty" do
       assert match(["$unexpected"], []) == :ok
-      assert match(["$unexpected"], [1]) == {:error, {:length_mismatch, 0, 1}}
+
+      assert reason(["$unexpected"], [1]) == %Reason{
+               reason: :length_mismatch,
+               expected: 0,
+               actual: 1,
+               path: nil
+             }
     end
 
     test "$unexpected anywhere but last is a hard error, not guessed at" do
-      assert match([1, "$unexpected", 3], [1, 2, 3]) ==
-               {:error, {:invalid_unexpected_position, 1, 3}}
+      assert reason([1, "$unexpected", 3], [1, 2, 3]) == %Reason{
+               reason: :invalid_unexpected_position,
+               expected: 1,
+               actual: 3,
+               path: nil
+             }
     end
 
     test "two $unexpected elements is also a hard error, at the first occurrence" do
@@ -181,11 +305,19 @@ defmodule Maestro.Matchers.JsonMatchTest do
       # never legitimately be the last element when a second one follows it,
       # so this falls into the same "not last" error as a single misplaced
       # $unexpected no special-casing needed for the duplicate case.
-      assert match(["$unexpected", "$unexpected"], []) ==
-               {:error, {:invalid_unexpected_position, 0, 2}}
+      assert reason(["$unexpected", "$unexpected"], []) == %Reason{
+               reason: :invalid_unexpected_position,
+               expected: 0,
+               actual: 2,
+               path: nil
+             }
 
-      assert match([1, "$unexpected", "$unexpected"], [1]) ==
-               {:error, {:invalid_unexpected_position, 1, 3}}
+      assert reason([1, "$unexpected", "$unexpected"], [1]) == %Reason{
+               reason: :invalid_unexpected_position,
+               expected: 1,
+               actual: 3,
+               path: nil
+             }
     end
 
     test "$expected/$unexpected as ordered-list elements are ordered-only, $contains ignores them" do
@@ -193,8 +325,12 @@ defmodule Maestro.Matchers.JsonMatchTest do
       # inside $contains, "$expected" is just a literal string to match against
       assert match(expected, ["$expected", "other"]) == :ok
 
-      assert match(expected, ["nope", "other"]) ==
-               {:error, {:contains_item_not_found, 0, "$expected"}}
+      assert reason(expected, ["nope", "other"]) == %Reason{
+               reason: :contains_item_not_found,
+               expected: "$expected",
+               actual: ["nope", "other"],
+               path: nil
+             }
     end
 
     test "templating still resolves before these directives are interpreted" do
@@ -214,9 +350,34 @@ defmodule Maestro.Matchers.JsonMatchTest do
       assert match(expected, [1, 2, 3]) == :ok
     end
 
-    test "a missing wanted item fails with its index" do
+    test "a missing wanted item fails" do
       expected = %{"$contains" => [1, 99]}
-      assert match(expected, [1, 2, 3]) == {:error, {:contains_item_not_found, 1, 99}}
+
+      assert reason(expected, [1, 2, 3]) == %Reason{
+               reason: :contains_item_not_found,
+               expected: 99,
+               actual: [1, 2, 3],
+               path: nil
+             }
+    end
+
+    test "several missing wanted items are all reported" do
+      expected = %{"$contains" => [98, 99]}
+
+      assert reasons(expected, [1, 2, 3]) == [
+               %Reason{
+                 reason: :contains_item_not_found,
+                 expected: 98,
+                 actual: [1, 2, 3],
+                 path: nil
+               },
+               %Reason{
+                 reason: :contains_item_not_found,
+                 expected: 99,
+                 actual: [1, 2, 3],
+                 path: nil
+               }
+             ]
     end
 
     test "an empty wanted list trivially passes" do
@@ -234,13 +395,21 @@ defmodule Maestro.Matchers.JsonMatchTest do
       expected = %{"$contains" => [%{"missing_field" => "$expected"}]}
       actual = [%{"id" => 42}]
 
-      assert match(expected, actual) ==
-               {:error, {:contains_item_not_found, 0, %{"missing_field" => "$expected"}}}
+      assert reason(expected, actual) == %Reason{
+               reason: :contains_item_not_found,
+               expected: %{"missing_field" => "$expected"},
+               actual: actual,
+               path: nil
+             }
     end
 
     test "against a non-list actual is a type mismatch" do
-      assert match(%{"$contains" => [1]}, "not a list") ==
-               {:error, {:type_mismatch, :list_expected, "not a list"}}
+      assert reason(%{"$contains" => [1]}, "not a list") == %Reason{
+               reason: :list_expected,
+               expected: nil,
+               actual: "not a list",
+               path: nil
+             }
     end
 
     test "documented greedy-matching limitation: a valid subset can be rejected" do
@@ -259,7 +428,12 @@ defmodule Maestro.Matchers.JsonMatchTest do
       expected = %{"$contains" => [%{"id" => "$expected"}, %{"id" => 1}]}
       actual = [%{"id" => 1}, %{"id" => 2}]
 
-      assert match(expected, actual) == {:error, {:contains_item_not_found, 1, %{"id" => 1}}}
+      assert reason(expected, actual) == %Reason{
+               reason: :contains_item_not_found,
+               expected: %{"id" => 1},
+               actual: actual,
+               path: nil
+             }
     end
   end
 
@@ -269,9 +443,15 @@ defmodule Maestro.Matchers.JsonMatchTest do
       assert match(expected, [1, 2, 3]) == :ok
     end
 
-    test "fails with the excluded item's index and where it was found" do
+    test "fails with the excluded item and where it was found" do
       expected = %{"$excludes" => [1, 2]}
-      assert match(expected, [5, 2, 7]) == {:error, {:excluded_item_found, 1, 1, 2}}
+
+      assert reason(expected, [5, 2, 7]) == %Reason{
+               reason: :excluded_item_found,
+               expected: 2,
+               actual: 2,
+               path: nil
+             }
     end
 
     test "an empty excluded list trivially passes" do
@@ -283,20 +463,32 @@ defmodule Maestro.Matchers.JsonMatchTest do
       expected = %{"$excludes" => [%{"key" => "val"}]}
       assert match(expected, [%{"key" => "other"}, %{"other" => "field"}]) == :ok
 
-      assert match(expected, [%{"key" => "val", "extra" => "ignored"}]) ==
-               {:error, {:excluded_item_found, 0, 0, %{"key" => "val"}}}
+      assert reason(expected, [%{"key" => "val", "extra" => "ignored"}]) == %Reason{
+               reason: :excluded_item_found,
+               expected: %{"key" => "val"},
+               actual: %{"key" => "val", "extra" => "ignored"},
+               path: nil
+             }
     end
 
     test "against a non-list actual is a type mismatch" do
-      assert match(%{"$excludes" => [1]}, "not a list") ==
-               {:error, {:type_mismatch, :list_expected, "not a list"}}
+      assert reason(%{"$excludes" => [1]}, "not a list") == %Reason{
+               reason: :list_expected,
+               expected: nil,
+               actual: "not a list",
+               path: nil
+             }
     end
 
     test "nested directives inside an excluded item still apply" do
       expected = %{"$excludes" => [%{"id" => "$expected"}]}
       # any object with an "id" key is excluded, so this actual violates it
-      assert match(expected, [%{"id" => 1}]) ==
-               {:error, {:excluded_item_found, 0, 0, %{"id" => "$expected"}}}
+      assert reason(expected, [%{"id" => 1}]) == %Reason{
+               reason: :excluded_item_found,
+               expected: %{"id" => "$expected"},
+               actual: %{"id" => 1},
+               path: nil
+             }
 
       assert match(expected, [%{"name" => "no id here"}]) == :ok
     end
@@ -305,53 +497,91 @@ defmodule Maestro.Matchers.JsonMatchTest do
       expected = %{"$excludes" => ["{{banned}}"]}
       assert match(expected, ["a", "b"], %{"banned" => "c"}) == :ok
 
-      assert match(expected, ["a", "b"], %{"banned" => "a"}) ==
-               {:error, {:excluded_item_found, 0, 0, "a"}}
+      assert reason(expected, ["a", "b"], %{"banned" => "a"}) == %Reason{
+               reason: :excluded_item_found,
+               expected: "a",
+               actual: "a",
+               path: nil
+             }
     end
   end
 
   describe "$length" do
     test "bare integer is an exact-length check" do
       assert match(%{"$length" => 3}, [1, 2, 3]) == :ok
-      assert match(%{"$length" => 3}, [1, 2]) == {:error, {:length_not_equal, 3, 2}}
+
+      assert reason(%{"$length" => 3}, [1, 2]) == %Reason{
+               reason: :length_not_equal,
+               expected: 3,
+               actual: 2,
+               path: nil
+             }
     end
 
     test "$gt: strictly greater than" do
       assert match(%{"$length" => %{"$gt" => 2}}, [1, 2, 3]) == :ok
 
-      assert match(%{"$length" => %{"$gt" => 2}}, [1, 2]) ==
-               {:error, {:length_not_greater_than, 2, 2}}
+      assert reason(%{"$length" => %{"$gt" => 2}}, [1, 2]) == %Reason{
+               reason: :length_not_greater_than,
+               expected: 2,
+               actual: 2,
+               path: nil
+             }
     end
 
     test "$lt: strictly less than" do
       assert match(%{"$length" => %{"$lt" => 3}}, [1, 2]) == :ok
 
-      assert match(%{"$length" => %{"$lt" => 3}}, [1, 2, 3]) ==
-               {:error, {:length_not_less_than, 3, 3}}
+      assert reason(%{"$length" => %{"$lt" => 3}}, [1, 2, 3]) == %Reason{
+               reason: :length_not_less_than,
+               expected: 3,
+               actual: 3,
+               path: nil
+             }
     end
 
     test "$between: inclusive on both ends" do
       assert match(%{"$length" => %{"$between" => [2, 4]}}, [1, 2]) == :ok
       assert match(%{"$length" => %{"$between" => [2, 4]}}, [1, 2, 3, 4]) == :ok
 
-      assert match(%{"$length" => %{"$between" => [2, 4]}}, [1]) ==
-               {:error, {:length_not_between, 2, 4, 1}}
+      assert reason(%{"$length" => %{"$between" => [2, 4]}}, [1]) == %Reason{
+               reason: :length_not_between,
+               expected: [2, 4],
+               actual: 1,
+               path: nil
+             }
 
-      assert match(%{"$length" => %{"$between" => [2, 4]}}, [1, 2, 3, 4, 5]) ==
-               {:error, {:length_not_between, 2, 4, 5}}
+      assert reason(%{"$length" => %{"$between" => [2, 4]}}, [1, 2, 3, 4, 5]) == %Reason{
+               reason: :length_not_between,
+               expected: [2, 4],
+               actual: 5,
+               path: nil
+             }
     end
 
     test "against a non-list actual is a type mismatch" do
-      assert match(%{"$length" => 3}, "not a list") ==
-               {:error, {:type_mismatch, :list_expected, "not a list"}}
+      assert reason(%{"$length" => 3}, "not a list") == %Reason{
+               reason: :list_expected,
+               expected: nil,
+               actual: "not a list",
+               path: nil
+             }
     end
 
     test "a malformed spec is a hard error, not guessed at" do
-      assert match(%{"$length" => %{"$foo" => 1}}, [1]) ==
-               {:error, {:invalid_length_directive, %{"$foo" => 1}}}
+      assert reason(%{"$length" => %{"$foo" => 1}}, [1]) == %Reason{
+               reason: :invalid_length_directive,
+               expected: %{"$foo" => 1},
+               actual: nil,
+               path: nil
+             }
 
-      assert match(%{"$length" => "three"}, [1]) ==
-               {:error, {:invalid_length_directive, "three"}}
+      assert reason(%{"$length" => "three"}, [1]) == %Reason{
+               reason: :invalid_length_directive,
+               expected: "three",
+               actual: nil,
+               path: nil
+             }
     end
 
     test "does not compose with $contains/$excludes in the same wrapper" do
@@ -362,8 +592,12 @@ defmodule Maestro.Matchers.JsonMatchTest do
       # entries with the same `path`, not one combined expected value.
       expected = %{"$length" => 3, "$contains" => [1]}
 
-      assert match(expected, [1, 2, 3]) ==
-               {:error, {:type_mismatch, :object_expected, [1, 2, 3]}}
+      assert reason(expected, [1, 2, 3]) == %Reason{
+               reason: :object_expected,
+               expected: expected,
+               actual: [1, 2, 3],
+               path: nil
+             }
     end
 
     test "checking length and contents of the same list via two assert entries" do
@@ -380,8 +614,12 @@ defmodule Maestro.Matchers.JsonMatchTest do
       expected = %{"$length" => %{"$gt" => "{{min_count}}"}}
       assert match(expected, [1, 2, 3], %{"min_count" => 2}) == :ok
 
-      assert match(expected, [1], %{"min_count" => 2}) ==
-               {:error, {:length_not_greater_than, 2, 1}}
+      assert reason(expected, [1], %{"min_count" => 2}) == %Reason{
+               reason: :length_not_greater_than,
+               expected: 2,
+               actual: 1,
+               path: nil
+             }
     end
   end
 
@@ -391,18 +629,26 @@ defmodule Maestro.Matchers.JsonMatchTest do
     end
 
     test "a non-matching pattern fails" do
-      assert match(%{"$regex" => "^ORD-\\d+$"}, "abc") ==
-               {:error, {:regex_no_match, "^ORD-\\d+$", "abc"}}
+      assert reason(%{"$regex" => "^ORD-\\d+$"}, "abc") == %Reason{
+               reason: :regex_no_match,
+               expected: "^ORD-\\d+$",
+               actual: "abc",
+               path: nil
+             }
     end
 
     test "an invalid pattern is a normal match error, not a crash" do
-      assert {:error, {:invalid_regex, "(unclosed", _reason}} =
-               match(%{"$regex" => "(unclosed"}, "abc")
+      assert %Reason{reason: :invalid_regex, expected: "(unclosed", actual: _reason} =
+               reason(%{"$regex" => "(unclosed"}, "abc")
     end
 
     test "applied to a non-string actual fails cleanly" do
-      assert match(%{"$regex" => "^\\d+$"}, 42) ==
-               {:error, {:regex_requires_string, "^\\d+$", 42}}
+      assert reason(%{"$regex" => "^\\d+$"}, 42) == %Reason{
+               reason: :invalid_regex,
+               expected: "^\\d+$",
+               actual: 42,
+               path: nil
+             }
     end
   end
 
@@ -433,8 +679,12 @@ defmodule Maestro.Matchers.JsonMatchTest do
 
       module = Maestro.Matchers.JsonMatchTest.Checks
 
-      assert match(%{"$mfa" => mfa}, "anything") ==
-               {:error, {:mfa_check_failed, module, :always_false}}
+      assert reason(%{"$mfa" => mfa}, "anything") == %Reason{
+               reason: :mfa_check_failed,
+               expected: {module, :always_false},
+               actual: "anything",
+               path: nil
+             }
     end
 
     test "a function returning {:error, reason} fails with that reason" do
@@ -445,8 +695,12 @@ defmodule Maestro.Matchers.JsonMatchTest do
 
       module = Maestro.Matchers.JsonMatchTest.Checks
 
-      assert match(%{"$mfa" => mfa}, "anything") ==
-               {:error, {:mfa_check_failed, module, :always_error, :nope}}
+      assert reason(%{"$mfa" => mfa}, "anything") == %Reason{
+               reason: :mfa_check_failed,
+               expected: {module, :always_error},
+               actual: :nope,
+               path: nil
+             }
     end
 
     test "a function returning something else is an invalid_mfa_result error" do
@@ -455,15 +709,23 @@ defmodule Maestro.Matchers.JsonMatchTest do
         "function" => "weird_result"
       }
 
-      assert match(%{"$mfa" => mfa}, "anything") ==
-               {:error, {:invalid_mfa_result, :not_a_valid_result}}
+      assert reason(%{"$mfa" => mfa}, "anything") == %Reason{
+               reason: :invalid_mfa_result,
+               expected: mfa,
+               actual: :not_a_valid_result,
+               path: nil
+             }
     end
 
     test "an unknown module never crashes the run" do
       mfa = %{"module" => "Maestro.DoesNotExistAtAll", "function" => "always_true"}
 
-      assert match(%{"$mfa" => mfa}, "anything") ==
-               {:error, {:mfa_module_not_found, "Maestro.DoesNotExistAtAll"}}
+      assert reason(%{"$mfa" => mfa}, "anything") == %Reason{
+               reason: :mfa_error,
+               expected: mfa,
+               actual: {:mfa_module_not_found, "Maestro.DoesNotExistAtAll"},
+               path: nil
+             }
     end
 
     test "an unknown function on a real module never crashes the run" do
@@ -472,8 +734,12 @@ defmodule Maestro.Matchers.JsonMatchTest do
         "function" => "does_not_exist_anywhere"
       }
 
-      assert match(%{"$mfa" => mfa}, "anything") ==
-               {:error, {:mfa_function_not_found, "does_not_exist_anywhere"}}
+      assert reason(%{"$mfa" => mfa}, "anything") == %Reason{
+               reason: :mfa_error,
+               expected: mfa,
+               actual: {:mfa_function_not_found, "does_not_exist_anywhere"},
+               path: nil
+             }
     end
 
     test "a real function not exported at the given arity never crashes the run" do
@@ -483,16 +749,24 @@ defmodule Maestro.Matchers.JsonMatchTest do
         "args" => ["unexpected", "extra", "args"]
       }
 
-      assert {:error, {:mfa_not_exported, _mod, "always_true", 4}} =
-               match(%{"$mfa" => mfa}, "anything")
+      assert %Reason{
+               reason: :mfa_error,
+               expected: ^mfa,
+               actual: {:mfa_not_exported, _mod, "always_true", 4}
+             } =
+               reason(%{"$mfa" => mfa}, "anything")
     end
 
     test "a raising function is rescued, not a crash" do
       mfa = %{"module" => "Maestro.Matchers.JsonMatchTest.Checks", "function" => "boom"}
       module = Maestro.Matchers.JsonMatchTest.Checks
 
-      assert match(%{"$mfa" => mfa}, "anything") ==
-               {:error, {:mfa_raised, module, :boom, "kaboom"}}
+      assert reason(%{"$mfa" => mfa}, "anything") == %Reason{
+               reason: :mfa_error,
+               expected: mfa,
+               actual: {:mfa_raised, module, :boom, "kaboom"},
+               path: nil
+             }
     end
 
     test "args come from the already-interpolated expected tree" do
@@ -549,8 +823,12 @@ defmodule Maestro.Matchers.JsonMatchTest do
     end
 
     test "a missing interpolation key propagates as an error, not a silent pass-through" do
-      assert match(%{"id" => "{{missing}}"}, %{"id" => "abc"}, %{}) ==
-               {:error, {:missing_interpolation_key, "missing"}}
+      assert reason(%{"id" => "{{missing}}"}, %{"id" => "abc"}, %{}) == %Reason{
+               reason: :interpolation_failed,
+               expected: "missing",
+               actual: nil,
+               path: nil
+             }
     end
   end
 
@@ -565,31 +843,57 @@ defmodule Maestro.Matchers.JsonMatchTest do
       assert JsonMatch.match(assertion, %{"total" => 42}, %{}) == :ok
     end
 
-    test "a path that doesn't resolve is its own error, with the underlying reason" do
+    test "a path that doesn't resolve is its own error" do
       assertion = %{expected: 42, path: "$.missing"}
 
       assert JsonMatch.match(assertion, %{"total" => 42}, %{}) ==
-               {:error, {:path_not_found, "$.missing", {:missing_key, "missing"}}}
+               {:error,
+                [
+                  %Reason{
+                    reason: :path_not_found,
+                    expected: "$.missing",
+                    actual: nil,
+                    path: nil
+                  }
+                ]}
     end
   end
 
   describe "type mismatches" do
     test "expected object, actual list" do
-      assert match(%{"a" => 1}, [1, 2]) == {:error, {:type_mismatch, :object_expected, [1, 2]}}
+      assert reason(%{"a" => 1}, [1, 2]) == %Reason{
+               reason: :object_expected,
+               expected: %{"a" => 1},
+               actual: [1, 2],
+               path: nil
+             }
     end
 
     test "expected object, actual scalar" do
-      assert match(%{"a" => 1}, "not an object") ==
-               {:error, {:type_mismatch, :object_expected, "not an object"}}
+      assert reason(%{"a" => 1}, "not an object") == %Reason{
+               reason: :object_expected,
+               expected: %{"a" => 1},
+               actual: "not an object",
+               path: nil
+             }
     end
 
     test "expected list, actual object" do
-      assert match([1, 2], %{"a" => 1}) == {:error, {:type_mismatch, :list_expected, %{"a" => 1}}}
+      assert reason([1, 2], %{"a" => 1}) == %Reason{
+               reason: :list_expected,
+               expected: [1, 2],
+               actual: %{"a" => 1},
+               path: nil
+             }
     end
 
     test "expected list, actual scalar" do
-      assert match([1, 2], "not a list") ==
-               {:error, {:type_mismatch, :list_expected, "not a list"}}
+      assert reason([1, 2], "not a list") == %Reason{
+               reason: :list_expected,
+               expected: [1, 2],
+               actual: "not a list",
+               path: nil
+             }
     end
   end
 end

@@ -162,7 +162,7 @@ defmodule Maestro do
   @typedoc """
   One testcase's outcome within a suite run. `steps` is exactly
   `Maestro.Core.Runner.Step.run_steps/2`'s own `[step_result]` return value,
-  reused verbatim (already nests `Maestro.Core.AssertRunner.assertion_result()`
+  reused verbatim (already nests `Maestro.Assert.AssertionResult.t()`
   inside each step) no re-wrapping.
   """
   @type testcase_run_result :: %{

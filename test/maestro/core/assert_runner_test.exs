@@ -1,6 +1,8 @@
 defmodule Maestro.Core.AssertRunnerTest do
   use ExUnit.Case, async: false
 
+  alias Maestro.Assert.AssertionResult
+  alias Maestro.Assert.Reason
   alias Maestro.Assert.Registry, as: AssertRegistry
   alias Maestro.Core.AssertRunner
 
@@ -25,15 +27,15 @@ defmodule Maestro.Core.AssertRunnerTest do
       assert AssertRunner.run_assertions(assertions, actual, %{}) ==
                {:ok,
                 [
-                  %{
+                  %AssertionResult{
                     status: :ok,
-                    reason: nil,
+                    reasons: [],
                     assertion: Enum.at(assertions, 0),
                     actual: actual
                   },
-                  %{
+                  %AssertionResult{
                     status: :ok,
-                    reason: nil,
+                    reasons: [],
                     assertion: Enum.at(assertions, 1),
                     actual: actual
                   }
@@ -47,7 +49,7 @@ defmodule Maestro.Core.AssertRunnerTest do
       ]
 
       assert {:error, results} = AssertRunner.run_assertions(assertions, %{"a" => 1}, %{})
-      assert [%{status: :ok}, %{status: :error}] = results
+      assert [%AssertionResult{status: :ok}, %AssertionResult{status: :error}] = results
     end
 
     test "an unregistered matcher name is an assertion-level error, not a crash" do
@@ -57,9 +59,11 @@ defmodule Maestro.Core.AssertRunnerTest do
       assert AssertRunner.run_assertions([assertion], actual, %{}) ==
                {:error,
                 [
-                  %{
+                  %AssertionResult{
                     status: :error,
-                    reason: :not_found,
+                    reasons: [
+                      %Reason{reason: :matcher_not_found, expected: "does_not_exist", actual: nil}
+                    ],
                     assertion: assertion,
                     actual: actual
                   }
@@ -71,10 +75,25 @@ defmodule Maestro.Core.AssertRunnerTest do
       actual = %{"total" => 42}
       context = %{"seed" => "abc"}
 
-      assert {:error, [%{reason: reason}]} =
+      assert {:error, [%AssertionResult{reasons: [reason]}]} =
                AssertRunner.run_assertions([assertion], actual, context)
 
-      assert {:test_matcher_saw, ^assertion, ^actual, ^context} = reason
+      assert %Reason{
+               reason: :test_matcher_saw,
+               expected: ^assertion,
+               actual: {^assertion, ^actual, ^context}
+             } =
+               reason
+    end
+
+    test "a matcher reporting several reasons is passed through as a multi-entry list" do
+      assertion = %{matcher: "json_match", expected: %{"a" => 1, "b" => 2}}
+      actual = %{"a" => 9, "b" => 9}
+
+      assert {:error, [%AssertionResult{status: :error, reasons: reasons}]} =
+               AssertRunner.run_assertions([assertion], actual, %{})
+
+      assert length(reasons) == 2
     end
   end
 end

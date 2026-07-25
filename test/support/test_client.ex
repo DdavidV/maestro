@@ -52,3 +52,12 @@ defmodule Maestro.TestClientSlow do
     {:ok, %{"echo" => rendered}}
   end
 end
+
+defmodule Maestro.TestClientCrashing do
+  @moduledoc false
+  use Maestro.Client, name: "test_client_crashing"
+
+  def send(_call_state, _rendered) do
+    raise "client boom"
+  end
+end

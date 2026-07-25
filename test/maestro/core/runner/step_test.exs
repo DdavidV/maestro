@@ -2,6 +2,7 @@ defmodule Maestro.Core.Runner.StepTest do
   use ExUnit.Case, async: false
 
   alias Maestro.Assert.Registry, as: AssertRegistry
+  alias Maestro.Client.Error, as: ClientError
   alias Maestro.Client.Registry, as: ClientRegistry
   alias Maestro.Core.Runner.Step
 
@@ -159,7 +160,13 @@ defmodule Maestro.Core.Runner.StepTest do
 
       assert {:error, {[first, second], _saved}} = Step.run_steps([failing, ok_step])
       assert first.status == :error
-      assert first.response == {:missing_interpolation_key, "missing"}
+
+      assert first.response == %ClientError{
+               stage: :interpolation,
+               reason: :payload_render_failed,
+               details: {:missing_interpolation_key, "missing"}
+             }
+
       assert second.status == :ok
     end
 
@@ -169,7 +176,10 @@ defmodule Maestro.Core.Runner.StepTest do
 
       assert {:error, {[first, second], _saved}} = Step.run_steps([failing, ok_step])
       assert first.status == :error
-      assert first.response == :not_found
+
+      assert %ClientError{stage: :client_lookup, reason: :client_not_found, details: :not_found} =
+               first.response
+
       assert second.status == :ok
     end
 
@@ -190,6 +200,21 @@ defmodule Maestro.Core.Runner.StepTest do
 
       assert nested_result.status == :error
       assert after_result.status == :ok
+    end
+
+    test "a client raising is rescued into a structured error, not a crash" do
+      failing =
+        template_step(client: "test_client_crashing", payload: %{}, dataset: %{data: %{}})
+
+      ok_step = template_step(payload: %{"ok" => true}, dataset: %{data: %{}})
+
+      assert {:error, {[first, second], _saved}} = Step.run_steps([failing, ok_step])
+      assert first.status == :error
+
+      assert %ClientError{stage: :send, reason: :client_raised, details: "client boom"} =
+               first.response
+
+      assert second.status == :ok
     end
   end
 
@@ -242,7 +267,7 @@ defmodule Maestro.Core.Runner.StepTest do
       assert {:ok, {[result], _saved}} = Step.run_steps([step])
       assert result.status == :ok
 
-      assert [%{status: :ok, reason: nil, assertion: %{matcher: "test_matcher"}}] =
+      assert [%{status: :ok, reasons: [], assertion: %{matcher: "test_matcher"}}] =
                result.assertions
     end
 
@@ -258,10 +283,10 @@ defmodule Maestro.Core.Runner.StepTest do
       assert result.status == :error
       assert result.response == %{"echo" => result.rendered}
 
-      assert [%{status: :error, reason: reason, assertion: %{matcher: "test_matcher"}}] =
+      assert [%{status: :error, reasons: [reason], assertion: %{matcher: "test_matcher"}}] =
                result.assertions
 
-      assert {:test_matcher_saw, _assertion, _actual, _context} = reason
+      assert %Maestro.Assert.Reason{reason: :test_matcher_saw} = reason
     end
 
     test "json_match works end-to-end against the real response" do
@@ -291,8 +316,8 @@ defmodule Maestro.Core.Runner.StepTest do
       assert result.status == :error
 
       assert [
-               %{status: :ok, reason: nil, assertion: %{matcher: "test_matcher_always_ok"}},
-               %{status: :error, reason: _reason, assertion: %{matcher: "test_matcher"}}
+               %{status: :ok, reasons: [], assertion: %{matcher: "test_matcher_always_ok"}},
+               %{status: :error, reasons: [_reason], assertion: %{matcher: "test_matcher"}}
              ] = result.assertions
     end
 
@@ -341,8 +366,13 @@ defmodule Maestro.Core.Runner.StepTest do
 
       assert {:error, {[result], _saved}} = Step.run_steps([step])
 
-      assert [%{status: :error, reason: :not_found, assertion: %{matcher: "does_not_exist"}}] =
-               result.assertions
+      assert [
+               %{
+                 status: :error,
+                 reasons: [%Maestro.Assert.Reason{reason: :matcher_not_found}],
+                 assertion: %{matcher: "does_not_exist"}
+               }
+             ] = result.assertions
     end
 
     test "a template-step nested inside a scenario call still runs its own assert" do

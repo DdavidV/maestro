@@ -25,14 +25,19 @@ defmodule Maestro.Core.Runner.Step do
   ## Failure handling
 
   A step's failure (a missing interpolation key, an unregistered client, a
-  client init/send error, or a failing assertion) does not halt the
-  sequence it's recorded as a failed `t:step_result/0` and execution
-  continues, so a run surfaces as much diagnostic information as possible
-  in one pass rather than stopping at the first problem. `save` extraction
-  is best-effort: if a `save` entry's path doesn't resolve against the
-  response, that entry is silently skipped rather than failing the step, a
-  response's shape legitimately varies (an error body doesn't look like a
-  success body), unlike a static file reference being wrong.
+  client init/send error, a client crash, or a failing assertion) does not
+  halt the sequence it's recorded as a failed `t:step_result/0` and
+  execution continues, so a run surfaces as much diagnostic information as
+  possible in one pass rather than stopping at the first problem. A
+  dispatch failure (anything before a response comes back) sets
+  `response` to a `Maestro.Client.Error.t()` describing what went wrong
+  and where in the pipeline (interpolation, client lookup, `init/2`, or
+  `send/2`, including a client module raising, which is rescued rather
+  than allowed to crash the run). `save` extraction is best-effort: if a
+  `save` entry's path doesn't resolve against the response, that entry is
+  silently skipped rather than failing the step, a response's shape
+  legitimately varies (an error body doesn't look like a success body),
+  unlike a static file reference being wrong.
 
   ## Assertions
 
@@ -49,6 +54,7 @@ defmodule Maestro.Core.Runner.Step do
   outcome regardless.
   """
 
+  alias Maestro.Assert.AssertionResult
   alias Maestro.Client
   alias Maestro.Client.Registry, as: ClientRegistry
   alias Maestro.Core.AssertRunner
@@ -61,8 +67,8 @@ defmodule Maestro.Core.Runner.Step do
           status: :ok | :error,
           client: String.t() | nil,
           rendered: Client.rendered() | nil,
-          response: term,
-          assertions: [AssertRunner.assertion_result()]
+          response: term | Client.Error.t(),
+          assertions: [AssertionResult.t()]
         }
 
   @doc """
@@ -144,13 +150,37 @@ defmodule Maestro.Core.Runner.Step do
   end
 
   defp dispatch(step, context) do
-    with {:ok, payload} <- Interpolation.render(step.template.payload, context),
-         {:ok, options} <- Interpolation.render(step.template.options, context),
+    with {:ok, payload} <- render(step.template.payload, context, :payload_render_failed),
+         {:ok, options} <- render(step.template.options, context, :options_render_failed),
          rendered = %{"payload" => payload, "options" => options},
-         {:ok, entry} <- ClientRegistry.fetch(step.client),
-         {:ok, response} <- Client.call(entry, rendered) do
+         {:ok, entry} <- lookup(step.client),
+         {:ok, response} <- client_send(entry, rendered) do
       {:ok, rendered, response}
     end
+  end
+
+  defp render(value, context, reason) do
+    case Interpolation.render(value, context) do
+      {:ok, rendered} -> {:ok, rendered}
+      {:error, details} -> {:error, Client.Error.new(:interpolation, reason, details)}
+    end
+  end
+
+  defp lookup(client_name) do
+    case ClientRegistry.fetch(client_name) do
+      {:ok, entry} -> {:ok, entry}
+      {:error, details} -> {:error, Client.Error.new(:client_lookup, :client_not_found, details)}
+    end
+  end
+
+  defp client_send(entry, rendered) do
+    case Client.call(entry, rendered) do
+      {:ok, response} -> {:ok, response}
+      {:error, details} -> {:error, Client.Error.new(:send, :send_failed, details)}
+    end
+  rescue
+    exception ->
+      {:error, Client.Error.new(:send, :client_raised, Exception.message(exception))}
   end
 
   defp extract_saves(step, response, saved) do

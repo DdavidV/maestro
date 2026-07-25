@@ -33,30 +33,56 @@ defmodule Maestro.Matchers.JsonSchemaMatch do
 
   A schema that doesn't itself pass JSON Schema meta-schema validation (a
   typo like `"type": "sting"`, or `expected` not being an object/map at all)
-  is a normal assertion failure (`{:invalid_schema, reason}`), not a crash.
+  is a normal assertion failure (`reason: :invalid_schema`), not a crash.
+
+  ## Failure reporting
+
+  A failing match returns `{:error, reasons}`, a `[Maestro.Assert.Reason.t()]`
+  with one entry per `{message, path}` pair `ExJsonSchema.Validator.validate/2`
+  itself returns, `ExJsonSchema` doesn't stop at the first schema
+  violation, so neither does this matcher. Each entry's `reason` is
+  `:schema_validation_failed`, `path` is `ExJsonSchema`'s own error path
+  (e.g. `"#/status"`), and `actual` is `ExJsonSchema`'s own human-readable
+  message string (kept as-is since it's the genuinely useful diagnostic
+  content here, unlike `Maestro.Matchers.JsonMatch` there's no finer-
+  grained sub-value to extract into a separate field).
   """
 
   use Maestro.Assert.Matcher, name: "json_schema_match"
 
+  alias Maestro.Assert.Reason
   alias Maestro.Core.Interpolation
   alias Maestro.Core.JsonPath
 
   @impl true
   def match(assertion, actual, context) do
     with {:ok, target} <- select_target(assertion, actual),
-         {:ok, expected} <- Interpolation.render(assertion.expected, context),
+         {:ok, expected} <- render_expected(assertion.expected, context),
          {:ok, schema} <- resolve_schema(expected) do
       case ExJsonSchema.Validator.validate(schema, target) do
         :ok -> :ok
-        {:error, reasons} -> {:error, {:schema_validation_failed, reasons}}
+        {:error, errors} -> {:error, Enum.map(errors, &to_reason(expected, &1))}
       end
+    else
+      {:error, %Reason{} = reason} -> {:error, [reason]}
     end
+  end
+
+  defp render_expected(expected, context) do
+    case Interpolation.render(expected, context) do
+      {:ok, rendered} -> {:ok, rendered}
+      {:error, reason} -> {:error, Reason.new(:interpolation_failed, expected, reason)}
+    end
+  end
+
+  defp to_reason(expected, {message, path}) do
+    Reason.new(:schema_validation_failed, expected, message, path)
   end
 
   defp select_target(%{path: path}, actual) do
     case JsonPath.extract(actual, path) do
       {:ok, value} -> {:ok, value}
-      {:error, reason} -> {:error, {:path_not_found, path, reason}}
+      {:error, _reason} -> {:error, Reason.new(:path_not_found, path, nil)}
     end
   end
 
@@ -65,6 +91,6 @@ defmodule Maestro.Matchers.JsonSchemaMatch do
   defp resolve_schema(expected) do
     {:ok, ExJsonSchema.Schema.resolve(expected)}
   rescue
-    e -> {:error, {:invalid_schema, Exception.message(e)}}
+    e -> {:error, Reason.new(:invalid_schema, expected, Exception.message(e))}
   end
 end

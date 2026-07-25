@@ -263,6 +263,7 @@ defmodule Maestro.Resources.Resolver do
   @spec with_path({:ok, term} | {:error, term}, path_segment) ::
           {:ok, term} | {:error, resolve_error}
   def with_path({:ok, _} = ok, _segment), do: ok
+
   def with_path({:error, %{path: path, reason: reason}}, segment) do
     {:error, %{path: [segment | path], reason: reason}}
   end
