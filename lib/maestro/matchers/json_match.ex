@@ -79,6 +79,7 @@ defmodule Maestro.Matchers.JsonMatch do
 
   alias Maestro.Core.Interpolation
   alias Maestro.Core.JsonPath
+  alias Maestro.Core.SafeMFA
 
   @unexpected "$unexpected"
   @expected "$expected"
@@ -340,47 +341,27 @@ defmodule Maestro.Matchers.JsonMatch do
   defp match_mfa(%{"module" => mod_str, "function" => fun_str} = mfa, actual)
        when is_binary(mod_str) and is_binary(fun_str) do
     args = Map.get(mfa, "args", [])
-    arity = 1 + length(args)
 
-    with {:ok, module} <- safe_module(mod_str),
-         {:ok, function} <- safe_function(fun_str),
-         true <- function_exported?(module, function, arity) do
-      invoke_mfa(module, function, [actual | args])
-    else
-      false -> {:error, {:mfa_not_exported, mod_str, fun_str, arity}}
-      {:error, _reason} = error -> error
+    case SafeMFA.apply(mod_str, fun_str, [actual | args]) do
+      {:ok, _module, _function, true} ->
+        :ok
+
+      {:ok, _module, _function, :ok} ->
+        :ok
+
+      {:ok, module, function, false} ->
+        {:error, {:mfa_check_failed, module, function}}
+
+      {:ok, module, function, {:error, reason}} ->
+        {:error, {:mfa_check_failed, module, function, reason}}
+
+      {:ok, _module, _function, other} ->
+        {:error, {:invalid_mfa_result, other}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   defp match_mfa(mfa, _actual), do: {:error, {:invalid_mfa_directive, mfa}}
-
-  defp invoke_mfa(module, function, args) do
-    case apply(module, function, args) do
-      true -> :ok
-      :ok -> :ok
-      false -> {:error, {:mfa_check_failed, module, function}}
-      {:error, reason} -> {:error, {:mfa_check_failed, module, function, reason}}
-      other -> {:error, {:invalid_mfa_result, other}}
-    end
-  rescue
-    e -> {:error, {:mfa_raised, module, function, Exception.message(e)}}
-  end
-
-  defp safe_module(mod_str) do
-    module = Module.safe_concat([mod_str])
-
-    if Code.ensure_loaded?(module) do
-      {:ok, module}
-    else
-      {:error, {:mfa_module_not_found, mod_str}}
-    end
-  rescue
-    ArgumentError -> {:error, {:mfa_module_not_found, mod_str}}
-  end
-
-  defp safe_function(fun_str) do
-    {:ok, String.to_existing_atom(fun_str)}
-  rescue
-    ArgumentError -> {:error, {:mfa_function_not_found, fun_str}}
-  end
 end
