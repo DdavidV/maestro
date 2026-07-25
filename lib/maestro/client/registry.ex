@@ -2,10 +2,10 @@ defmodule Maestro.Client.Registry do
   @moduledoc """
   Discovers `Maestro.Client` implementations and runs their `init_client/0`.
 
-  Discovery scans every module currently loaded into the VM for one
-  implementing the `Maestro.Client` behaviour
-  `use Maestro.Client, name: "..."` is all a client needs to be found,
-  no explicit registration list to maintain.
+  Discovery (via `Maestro.Core.BehaviourDiscovery`) scans every module
+  currently loaded into the VM for one implementing the `Maestro.Client`
+  behaviour `use Maestro.Client, name: "..."` is all a client needs to be
+  found, no explicit registration list to maintain.
   `init_client/0` (if the module implements it) runs once per
   discovered module, the first time the registry loads, its result is
   memoized in `:persistent_term` alongside the module itself, so `fetch/1`
@@ -80,23 +80,6 @@ defmodule Maestro.Client.Registry do
   end
 
   defp discover do
-    # Each loaded application's .app resource file lists every module it
-    # compiled, whether or not that module has actually been loaded into
-    # the VM yet (Elixir/Erlang load modules on demand, not eagerly)
-    # Code.ensure_loaded?/1 forces the load so module_info/1 below can
-    # inspect it. Using :code.all_loaded/0 instead would silently miss any
-    # client module nothing else in the app happens to reference yet,
-    # defeating the point of "use Maestro.Client is enough to register".
-    for {app, _description, _vsn} <- Application.loaded_applications(),
-        {:ok, modules} <- [:application.get_key(app, :modules)],
-        module <- modules,
-        implements_client?(module) do
-      module
-    end
-  end
-
-  defp implements_client?(module) do
-    Code.ensure_loaded?(module) and
-      Maestro.Client in (module.module_info(:attributes)[:behaviour] || [])
+    Maestro.Core.BehaviourDiscovery.modules_implementing(Maestro.Client)
   end
 end
