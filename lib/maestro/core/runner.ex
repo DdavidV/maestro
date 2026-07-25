@@ -55,6 +55,7 @@ defmodule Maestro.Core.Runner do
 
   alias Maestro.Core.Runner.Store
   alias Maestro.Core.Runner.Suite
+  alias Maestro.Resources
   alias Maestro.Resources.Resolver
 
   @task_supervisor Maestro.Core.Runner.TaskSupervisor
@@ -69,6 +70,21 @@ defmodule Maestro.Core.Runner do
   end
 
   def run(_entries), do: {:error, :invalid_entries}
+
+  @doc """
+  Fetches the named test plan and runs its `test_suites` exactly as if that
+  list had been passed to `run/1` directly.
+  """
+  @spec run_test_plan(String.t()) ::
+          {:ok, Maestro.run_id()}
+          | {:error,
+             {:test_plan_not_found, String.t()} | :invalid_entries | [{non_neg_integer, term}]}
+  def run_test_plan(name) do
+    case Resources.fetch(:test_plan, name) do
+      {:ok, %{"test_suites" => test_suites}} -> run(test_suites)
+      {:error, _reason} -> {:error, {:test_plan_not_found, name}}
+    end
+  end
 
   @spec status(Maestro.run_id()) :: {:ok, Maestro.run_progress()} | {:error, :not_found}
   def status(run_id) do

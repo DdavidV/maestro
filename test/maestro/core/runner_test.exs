@@ -341,4 +341,45 @@ defmodule Maestro.Core.RunnerTest do
       assert [%{status: :error}] = tc2.steps
     end
   end
+
+  describe "run_test_plan/1" do
+    test "runs every suite named in the test plan's test_suites, in order" do
+      write_resource!("suites", "plan_suite_a", inline_suite("plan_suite_a"))
+      write_resource!("suites", "plan_suite_b", inline_suite("plan_suite_b"))
+
+      write_resource!("test_plans", "nightly", %{
+        "id" => "nightly",
+        "test_suites" => ["plan_suite_a", "plan_suite_b"]
+      })
+
+      {:ok, run_id} = Runner.run_test_plan("nightly")
+      final = wait_until_done(run_id)
+
+      assert final.status == :ok
+      assert Enum.map(final.suites, & &1.id) == ["plan_suite_a", "plan_suite_b"]
+    end
+
+    test "an unknown test plan name is a synchronous error, no run started" do
+      assert Runner.run_test_plan("does_not_exist") ==
+               {:error, {:test_plan_not_found, "does_not_exist"}}
+    end
+
+    test "a test plan that fails schema validation is a synchronous error" do
+      write_resource!("test_plans", "broken", %{"id" => "broken"})
+
+      assert Runner.run_test_plan("broken") == {:error, {:test_plan_not_found, "broken"}}
+    end
+
+    test "a test plan naming a suite that fails to resolve reports the same error run/1 would" do
+      write_resource!("suites", "plan_suite_ok", inline_suite("plan_suite_ok"))
+
+      write_resource!("test_plans", "partial", %{
+        "id" => "partial",
+        "test_suites" => ["plan_suite_ok", "nonexistent_suite_file"]
+      })
+
+      assert {:error, resolve_errors} = Runner.run_test_plan("partial")
+      assert [{1, _reason}] = resolve_errors
+    end
+  end
 end

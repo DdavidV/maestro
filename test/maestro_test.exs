@@ -1,6 +1,8 @@
 defmodule MaestroTest do
   use ExUnit.Case, async: false
 
+  import Maestro.TestUtils
+
   describe "run/1, status/1, result/1 delegate to Maestro.Core.Runner" do
     test "a valid inline suite runs end-to-end through the public API" do
       suite = %{
@@ -43,6 +45,67 @@ defmodule MaestroTest do
       assert Maestro.result("does_not_exist") == {:error, :not_found}
       assert Maestro.result("does_not_exist", "any") == {:error, :not_found}
       assert Maestro.result("does_not_exist", "any", "any") == {:error, :not_found}
+    end
+  end
+
+  describe "run_test_plan/1 delegates to Maestro.Core.Runner" do
+    setup do
+      dir =
+        Path.join(System.tmp_dir!(), "maestro_test_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(dir)
+
+      previous = Application.get_env(:maestro, :resource_dir)
+      Application.put_env(:maestro, :resource_dir, dir)
+
+      on_exit(fn ->
+        File.rm_rf!(dir)
+
+        if previous do
+          Application.put_env(:maestro, :resource_dir, previous)
+        else
+          Application.delete_env(:maestro, :resource_dir)
+        end
+      end)
+
+      %{dir: dir}
+    end
+
+    test "runs the named test plan's suites end-to-end through the public API" do
+      write_resource!("suites", "plan_suite", %{
+        "id" => "plan_suite",
+        "testcases" => [
+          %{
+            "id" => "tc1",
+            "steps" => [
+              %{
+                "client" => "test_client_no_optional",
+                "template" => %{
+                  "clients" => ["test_client_no_optional"],
+                  "payload" => %{"a" => 1}
+                },
+                "dataset" => %{"data" => %{"a" => 1}}
+              }
+            ]
+          }
+        ]
+      })
+
+      write_resource!("test_plans", "nightly", %{
+        "id" => "nightly",
+        "test_suites" => ["plan_suite"]
+      })
+
+      assert {:ok, run_id} = Maestro.run_test_plan("nightly")
+      final = wait_until_done(run_id)
+
+      assert final.status == :ok
+      assert {:ok, %{suites: [%{id: "plan_suite"}]}} = Maestro.result(run_id)
+    end
+
+    test "an unknown test plan name surfaces the same error as Runner" do
+      assert Maestro.run_test_plan("does_not_exist") ==
+               {:error, {:test_plan_not_found, "does_not_exist"}}
     end
   end
 

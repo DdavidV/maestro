@@ -8,6 +8,7 @@ defmodule Maestro.Resources do
   <resource_dir>/scenarios/<path>.json
   <resource_dir>/datasets/<path>.json
   <resource_dir>/templates/<path>.json
+  <resource_dir>/test_plans/<path>.json
   ```
 
   `<path>` is exactly the reference string used in a step/scenario/suite
@@ -23,11 +24,11 @@ defmodule Maestro.Resources do
 
   alias Maestro.Resources.Schemas
 
-  @type kind :: :suite | :scenario | :dataset | :template
+  @type kind :: :suite | :scenario | :dataset | :template | :test_plan
   @type path :: String.t()
   @type reason :: :not_found | {:invalid, [Schemas.validation_error()]}
 
-  @kinds [:suite, :scenario, :dataset, :template]
+  @kinds [:suite, :scenario, :dataset, :template, :test_plan]
 
   @doc """
   Reads, decodes, and validates the resource of the given `kind` at `path`.
@@ -59,7 +60,8 @@ defmodule Maestro.Resources do
   """
   @spec resource_dir() :: String.t()
   def resource_dir do
-    Application.get_env(:maestro, :resource_dir) || Path.join(:code.priv_dir(:maestro), "resources")
+    Application.get_env(:maestro, :resource_dir) ||
+      Path.join(:code.priv_dir(:maestro), "resources")
   end
 
   defp resolve_path(kind, path) do
@@ -77,5 +79,5 @@ defmodule Maestro.Resources do
   defp subdir(:scenario), do: "scenarios"
   defp subdir(:dataset), do: "datasets"
   defp subdir(:template), do: "templates"
-
+  defp subdir(:test_plan), do: "test_plans"
 end

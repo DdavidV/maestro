@@ -7,6 +7,7 @@ defmodule Maestro.ResourcesTest do
   setup do
     dir =
       Path.join(System.tmp_dir!(), "maestro_registry_test_#{System.unique_integer([:positive])}")
+
     File.mkdir_p!(dir)
 
     previous = Application.get_env(:maestro, :resource_dir)
@@ -106,6 +107,14 @@ defmodule Maestro.ResourcesTest do
       on_exit(fn -> File.rm(escapee) end)
 
       assert Resources.fetch(:dataset, "../escapee") == {:error, :not_found}
+    end
+
+    test "returns {:ok, data} for a valid test_plan" do
+      test_plan = %{"id" => "nightly", "test_suites" => ["checkout/smoke"]}
+      write_resource!("test_plans", "nightly", test_plan)
+
+      assert {:ok, data} = Resources.fetch(:test_plan, "nightly")
+      assert data["test_suites"] == ["checkout/smoke"]
     end
 
     test "an edit to a file takes effect on the next fetch, no reload needed" do

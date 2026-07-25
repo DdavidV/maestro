@@ -1,0 +1,38 @@
+{
+  "title": "Test Plan",
+  "description": "A named, organized list of test suites to run together as one unit. A test plan only references suites by file path.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "test_suites"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier for this test plan."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional human-readable display label for the test plan (e.g. \"Nightly Regression\"), shown in results/UI. Purely cosmetic has no bearing on identity, unlike 'id'."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional free-text description of what this test plan covers."
+    },
+    "test_suites": {
+      "type": "array",
+      "description": "Ordered list of suite file paths (e.g. \"checkout/smoke\") to run together as one run. Each entry is resolved and run exactly like an entry in Maestro.run/1's own list.",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  },
+  "examples": [
+    {
+      "id": "nightly-regression",
+      "name": "Nightly Regression",
+      "description": "Every suite that must pass before a nightly deploy.",
+      "test_suites": ["checkout/smoke", "checkout/regression", "accounts/regression"]
+    }
+  ]
+}

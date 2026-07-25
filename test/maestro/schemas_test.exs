@@ -333,6 +333,49 @@ defmodule Maestro.SchemasTest do
     end
   end
 
+  describe "validate/2 (:test_plan)" do
+    test "accepts every worked example from test_plan.schema.json" do
+      for example <- examples_for("test_plan") do
+        assert Schemas.validate(:test_plan, example) == :ok
+      end
+    end
+
+    test "accepts a minimal valid test plan" do
+      test_plan = %{"id" => "nightly", "test_suites" => ["checkout/smoke"]}
+      assert Schemas.validate(:test_plan, test_plan) == :ok
+    end
+
+    test "rejects a test plan missing id" do
+      assert {:error, errors} = Schemas.validate(:test_plan, %{"test_suites" => ["a"]})
+      assert Enum.any?(errors, fn {message, _path} -> message =~ "id" end)
+    end
+
+    test "rejects a test plan missing test_suites" do
+      assert {:error, errors} = Schemas.validate(:test_plan, %{"id" => "nightly"})
+      assert Enum.any?(errors, fn {message, _path} -> message =~ "test_suites" end)
+    end
+
+    test "rejects a test plan with an empty test_suites list" do
+      test_plan = %{"id" => "nightly", "test_suites" => []}
+      assert {:error, _errors} = Schemas.validate(:test_plan, test_plan)
+    end
+
+    test "rejects a test plan whose test_suites has a non-string entry" do
+      test_plan = %{"id" => "nightly", "test_suites" => [%{"inline" => "not allowed"}]}
+      assert {:error, _errors} = Schemas.validate(:test_plan, test_plan)
+    end
+
+    test "rejects a test plan with duplicate test_suites entries" do
+      test_plan = %{"id" => "nightly", "test_suites" => ["checkout/smoke", "checkout/smoke"]}
+      assert {:error, _errors} = Schemas.validate(:test_plan, test_plan)
+    end
+
+    test "accepts a test plan without a name or description" do
+      test_plan = %{"id" => "nightly", "test_suites" => ["checkout/smoke"]}
+      assert Schemas.validate(:test_plan, test_plan) == :ok
+    end
+  end
+
   defp examples_for(name) do
     Path.join(:code.priv_dir(:maestro), "schemas")
     |> Path.join("#{name}.schema.json")

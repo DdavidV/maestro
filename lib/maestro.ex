@@ -208,6 +208,25 @@ defmodule Maestro do
   def run(entries), do: Maestro.Core.Runner.run(entries)
 
   @doc """
+  Fetches the named test plan (see `priv/schemas/test_plan.schema.json`) and
+  runs its `test_suites` exactly as if that list had been passed to `run/1`
+  directly same async execution model, same all-or-nothing resolution,
+  same `status/1`/`result/1` polling afterward.
+
+  Returns `{:error, {:test_plan_not_found, name}}` if `name` doesn't resolve
+  to a valid test plan file (missing, unreadable, or fails schema
+  validation) before anything runs. A test plan only references suites by
+  file path (see the schema); if any of those suite files then fail to
+  resolve, that's reported the same way `run/1` itself reports it
+  `{:error, resolve_errors}`.
+  """
+  @spec run_test_plan(String.t()) ::
+          {:ok, run_id}
+          | {:error,
+             {:test_plan_not_found, String.t()} | :invalid_entries | [{non_neg_integer, term}]}
+  def run_test_plan(name), do: Maestro.Core.Runner.run_test_plan(name)
+
+  @doc """
   A lightweight, per-suite progress view for `run_id`: which suites are
   pending, which is running, which are finished (and their outcome) —
   without the full step/assertion payload `result/1` carries.

@@ -9,9 +9,9 @@ defmodule Maestro.Resources.Schemas do
 
   @persistent_term_key {__MODULE__, :roots}
 
-  @kinds [:suite, :scenario, :step, :dataset, :template]
+  @kinds [:suite, :scenario, :step, :dataset, :template, :test_plan]
 
-  @type kind :: :suite | :scenario | :step | :dataset | :template
+  @type kind :: :suite | :scenario | :step | :dataset | :template | :test_plan
   @type validation_error :: {message :: String.t(), path :: String.t()}
 
   @doc """
