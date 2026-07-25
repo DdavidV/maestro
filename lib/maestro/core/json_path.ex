@@ -1,7 +1,7 @@
 defmodule Maestro.Core.JsonPath do
   @moduledoc """
   Extracts a value from a JSON-decoded (string-keyed) term using a small
-  `"$.a.b.c"`-style path syntax. Shared by `Maestro.Core.StepRunner` (`save`)
+  `"$.a.b.c"`-style path syntax. Shared by `Maestro.Core.Runner.Step` (`save`)
   and `Maestro.Matchers.JsonMatch` (`path`) so both use identical
   syntax and failure behavior.
 

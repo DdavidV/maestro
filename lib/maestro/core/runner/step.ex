@@ -1,4 +1,4 @@
-defmodule Maestro.Core.StepRunner do
+defmodule Maestro.Core.Runner.Step do
   @moduledoc """
   Executes a fully resolved step sequence.
 

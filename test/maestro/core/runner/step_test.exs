@@ -1,9 +1,9 @@
-defmodule Maestro.Core.StepRunnerTest do
+defmodule Maestro.Core.Runner.StepTest do
   use ExUnit.Case, async: false
 
   alias Maestro.Assert.Registry, as: AssertRegistry
   alias Maestro.Client.Registry, as: ClientRegistry
-  alias Maestro.Core.StepRunner
+  alias Maestro.Core.Runner.Step
 
   setup do
     :ok = ClientRegistry.load!()
@@ -35,7 +35,7 @@ defmodule Maestro.Core.StepRunnerTest do
           dataset: %{data: %{"foo" => "bar"}}
         )
 
-      assert {:ok, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:ok, {[result], _saved}} = Step.run_steps([step])
       assert result.status == :ok
       assert result.client == "test_client_no_optional"
       assert result.rendered == %{"payload" => %{"foo" => "bar"}, "options" => %{}}
@@ -50,7 +50,7 @@ defmodule Maestro.Core.StepRunnerTest do
           dataset: %{data: %{"id" => "42"}}
         )
 
-      assert {:ok, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:ok, {[result], _saved}} = Step.run_steps([step])
       assert result.rendered["options"] == %{"url" => "https://example.com/42"}
     end
   end
@@ -63,7 +63,7 @@ defmodule Maestro.Core.StepRunnerTest do
           dataset: %{rows: [%{"username" => "alice"}, %{"username" => "bob"}]}
         )
 
-      assert {:ok, {[first, second], _saved}} = StepRunner.run_steps([step])
+      assert {:ok, {[first, second], _saved}} = Step.run_steps([step])
       assert first.rendered["payload"] == %{"user" => "alice"}
       assert second.rendered["payload"] == %{"user" => "bob"}
     end
@@ -77,7 +77,7 @@ defmodule Maestro.Core.StepRunnerTest do
       step_b =
         template_step(name: "B", payload: %{"n" => "{{n}}", "step" => "b"}, dataset: shared_rows)
 
-      assert {:ok, {results, _saved}} = StepRunner.run_steps([step_a, step_b])
+      assert {:ok, {results, _saved}} = Step.run_steps([step_a, step_b])
 
       assert Enum.map(results, & &1.rendered["payload"]) == [
                %{"n" => 1, "step" => "a"},
@@ -103,7 +103,7 @@ defmodule Maestro.Core.StepRunnerTest do
           dataset: %{data: %{}}
         )
 
-      assert {:ok, {[_first, second], saved}} = StepRunner.run_steps([step1, step2])
+      assert {:ok, {[_first, second], saved}} = Step.run_steps([step1, step2])
       assert saved["auth_token"] == "abc"
       assert second.rendered["payload"] == %{"authorization" => "Bearer abc"}
     end
@@ -116,7 +116,7 @@ defmodule Maestro.Core.StepRunnerTest do
           save: [%{path: "$.echo.payload.marker", as: "last_marker"}]
         )
 
-      assert {:ok, {_results, saved}} = StepRunner.run_steps([step1])
+      assert {:ok, {_results, saved}} = Step.run_steps([step1])
       assert saved["last_marker"] == "row2"
     end
 
@@ -128,7 +128,7 @@ defmodule Maestro.Core.StepRunnerTest do
           save: [%{path: "$.echo.payload.nonexistent", as: "missing_value"}]
         )
 
-      assert {:ok, {[result], saved}} = StepRunner.run_steps([step])
+      assert {:ok, {[result], saved}} = Step.run_steps([step])
       assert result.status == :ok
       refute Map.has_key?(saved, "missing_value")
     end
@@ -147,7 +147,7 @@ defmodule Maestro.Core.StepRunnerTest do
           dataset: %{data: %{"shared" => "dataset-value"}}
         )
 
-      assert {:ok, {[_first, second], _saved}} = StepRunner.run_steps([step1, step2])
+      assert {:ok, {[_first, second], _saved}} = Step.run_steps([step1, step2])
       assert second.rendered["payload"] == %{"v" => "seed"}
     end
   end
@@ -157,7 +157,7 @@ defmodule Maestro.Core.StepRunnerTest do
       failing = template_step(payload: %{"x" => "{{missing}}"}, dataset: %{data: %{}})
       ok_step = template_step(payload: %{"ok" => true}, dataset: %{data: %{}})
 
-      assert {:error, {[first, second], _saved}} = StepRunner.run_steps([failing, ok_step])
+      assert {:error, {[first, second], _saved}} = Step.run_steps([failing, ok_step])
       assert first.status == :error
       assert first.response == {:missing_interpolation_key, "missing"}
       assert second.status == :ok
@@ -167,7 +167,7 @@ defmodule Maestro.Core.StepRunnerTest do
       failing = template_step(client: "does_not_exist", payload: %{}, dataset: %{data: %{}})
       ok_step = template_step(payload: %{"ok" => true}, dataset: %{data: %{}})
 
-      assert {:error, {[first, second], _saved}} = StepRunner.run_steps([failing, ok_step])
+      assert {:error, {[first, second], _saved}} = Step.run_steps([failing, ok_step])
       assert first.status == :error
       assert first.response == :not_found
       assert second.status == :ok
@@ -177,7 +177,7 @@ defmodule Maestro.Core.StepRunnerTest do
       step1 = template_step(payload: %{"a" => 1}, dataset: %{data: %{}})
       step2 = template_step(payload: %{"b" => 2}, dataset: %{data: %{}})
 
-      assert {:ok, {[_first, _second], _saved}} = StepRunner.run_steps([step1, step2])
+      assert {:ok, {[_first, _second], _saved}} = Step.run_steps([step1, step2])
     end
 
     test "a failure inside a nested scenario call propagates to the outer :error" do
@@ -186,7 +186,7 @@ defmodule Maestro.Core.StepRunnerTest do
       after_step = template_step(payload: %{"ok" => true}, dataset: %{data: %{}})
 
       assert {:error, {[nested_result, after_result], _saved}} =
-               StepRunner.run_steps([scenario_step, after_step])
+               Step.run_steps([scenario_step, after_step])
 
       assert nested_result.status == :error
       assert after_result.status == :ok
@@ -203,7 +203,7 @@ defmodule Maestro.Core.StepRunnerTest do
         }
       }
 
-      assert {:ok, {[result], _saved}} = StepRunner.run_steps([scenario_step])
+      assert {:ok, {[result], _saved}} = Step.run_steps([scenario_step])
       assert result.rendered["payload"] == %{"nested" => true}
     end
 
@@ -223,7 +223,7 @@ defmodule Maestro.Core.StepRunnerTest do
       after_step = template_step(payload: %{"v" => "{{token}}"}, dataset: %{data: %{}})
 
       assert {:ok, {[_scenario_result, after_result], saved}} =
-               StepRunner.run_steps([scenario_step, after_step])
+               Step.run_steps([scenario_step, after_step])
 
       assert saved["token"] == "from-scenario"
       assert after_result.rendered["payload"] == %{"v" => "from-scenario"}
@@ -239,7 +239,7 @@ defmodule Maestro.Core.StepRunnerTest do
           assert: [%{matcher: "test_matcher", expected: nil}]
         )
 
-      assert {:ok, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:ok, {[result], _saved}} = Step.run_steps([step])
       assert result.status == :ok
 
       assert [%{status: :ok, reason: nil, assertion: %{matcher: "test_matcher"}}] =
@@ -254,7 +254,7 @@ defmodule Maestro.Core.StepRunnerTest do
           assert: [%{"should_fail" => true, matcher: "test_matcher", expected: nil}]
         )
 
-      assert {:error, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:error, {[result], _saved}} = Step.run_steps([step])
       assert result.status == :error
       assert result.response == %{"echo" => result.rendered}
 
@@ -272,7 +272,7 @@ defmodule Maestro.Core.StepRunnerTest do
           assert: [%{matcher: "json_match", path: "$.echo.payload.ok", expected: true}]
         )
 
-      assert {:ok, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:ok, {[result], _saved}} = Step.run_steps([step])
       assert result.status == :ok
     end
 
@@ -287,7 +287,7 @@ defmodule Maestro.Core.StepRunnerTest do
           ]
         )
 
-      assert {:error, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:error, {[result], _saved}} = Step.run_steps([step])
       assert result.status == :error
 
       assert [
@@ -299,7 +299,7 @@ defmodule Maestro.Core.StepRunnerTest do
     test "a step without assert entries has empty assertions and stays :ok" do
       step = template_step(payload: %{"ok" => true}, dataset: %{data: %{}})
 
-      assert {:ok, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:ok, {[result], _saved}} = Step.run_steps([step])
       assert result.assertions == []
     end
 
@@ -312,7 +312,7 @@ defmodule Maestro.Core.StepRunnerTest do
           assert: [%{matcher: "test_matcher", expected: nil}]
         )
 
-      assert {:error, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:error, {[result], _saved}} = Step.run_steps([step])
       assert result.status == :error
       assert result.assertions == []
     end
@@ -326,7 +326,7 @@ defmodule Maestro.Core.StepRunnerTest do
           assert: [%{"should_fail" => true, matcher: "test_matcher", expected: nil}]
         )
 
-      assert {:error, {[result], saved}} = StepRunner.run_steps([step])
+      assert {:error, {[result], saved}} = Step.run_steps([step])
       assert result.status == :error
       assert saved["token"] == "abc"
     end
@@ -339,7 +339,7 @@ defmodule Maestro.Core.StepRunnerTest do
           assert: [%{matcher: "does_not_exist", expected: 1}]
         )
 
-      assert {:error, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:error, {[result], _saved}} = Step.run_steps([step])
 
       assert [%{status: :error, reason: :not_found, assertion: %{matcher: "does_not_exist"}}] =
                result.assertions
@@ -355,7 +355,7 @@ defmodule Maestro.Core.StepRunnerTest do
 
       scenario_step = %{scenario: %{steps: [leaf]}}
 
-      assert {:error, {[result], _saved}} = StepRunner.run_steps([scenario_step])
+      assert {:error, {[result], _saved}} = Step.run_steps([scenario_step])
       assert result.status == :error
       assert [%{status: :error, assertion: %{matcher: "test_matcher"}}] = result.assertions
     end
@@ -369,7 +369,7 @@ defmodule Maestro.Core.StepRunnerTest do
         dataset: %{data: %{}}
       }
 
-      assert {:ok, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:ok, {[result], _saved}} = Step.run_steps([step])
       assert result.name == "test_client_no_optional: my_template"
     end
 
@@ -380,7 +380,7 @@ defmodule Maestro.Core.StepRunnerTest do
         dataset: %{data: %{}}
       }
 
-      assert {:ok, {[result], _saved}} = StepRunner.run_steps([step])
+      assert {:ok, {[result], _saved}} = Step.run_steps([step])
       assert result.name == "test_client_no_optional: unnamed"
     end
 
@@ -388,7 +388,7 @@ defmodule Maestro.Core.StepRunnerTest do
       leaf = Map.put(ok_leaf(), :name, "the leaf step")
       scenario_step = %{scenario: %{name: "login", steps: [leaf]}}
 
-      assert {:ok, {[result], _saved}} = StepRunner.run_steps([scenario_step])
+      assert {:ok, {[result], _saved}} = Step.run_steps([scenario_step])
       assert result.name == "the leaf step"
     end
   end

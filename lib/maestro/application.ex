@@ -13,6 +13,8 @@ defmodule Maestro.Application do
       MaestroWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:maestro, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Maestro.PubSub},
+      Maestro.Core.Runner.Store,
+      {Task.Supervisor, name: Maestro.Core.Runner.TaskSupervisor},
       MaestroWeb.Endpoint
     ]
 

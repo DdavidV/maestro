@@ -13,7 +13,7 @@ defmodule Maestro.Assert.Matcher do
   `match/3` receives the whole atomized `t:Maestro.assertion/0` entry
   (including `:matcher` itself, which a matcher can just ignore), the
   step's `actual` response, and the same interpolation `context` (dataset
-  fields merged with accumulated `save` state) `Maestro.Core.StepRunner`
+  fields merged with accumulated `save` state) `Maestro.Core.Runner.Step`
   already builds for rendering the step's own template. The assertion is
   **not** pre-interpolated for you: `properties`/`expected` is matcher-owned
   and opaque, the same way a template's `payload`/`options` are opaque to

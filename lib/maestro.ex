@@ -45,7 +45,7 @@ defmodule Maestro do
 
   @typedoc """
   A single entry in a fully resolved step sequence, as produced by
-  `Maestro.Resources.Resolver` and consumed by `Maestro.Core.StepRunner`.
+  `Maestro.Resources.Resolver` and consumed by `Maestro.Core.Runner.Step`.
   Either a `t:template_step/0` (renders `template` and dispatches to `client`)
   or a `t:scenario_step/0` (recurses into the resolved scenario's own `steps`).
   `dataset` is always present on both shapes after resolution, even though it's
@@ -129,12 +129,116 @@ defmodule Maestro do
           optional(:path) => String.t()
         }
 
-  def run(_entries) do
-  end
+  @typedoc "Opaque run identifier returned by `run/1`. Callers must not parse it."
+  @type run_id :: String.t()
 
-  def status(_run_id) do
-  end
+  @typedoc """
+  A run's aggregate status. `:not_found` is only ever returned by `status/1`/
+  `result/1`, never stored `run/1` itself never returns it.
+  """
+  @type run_status :: :running | :ok | :error | :not_found
 
-  def result(_run_id) do
-  end
+  @typedoc """
+  A lightweight, per-suite progress view — same suite ordering and status
+  values as `t:run_result/0`'s `suites`, without the steps/assertions
+  payload. What `status/1` returns.
+  """
+  @type run_progress :: %{
+          run_id: run_id(),
+          status: run_status(),
+          suites: [%{id: String.t(), status: :pending | :running | :ok | :error}]
+        }
+
+  @typedoc """
+  One suite's outcome within a run. `testcases` is `[]` until that suite
+  starts executing.
+  """
+  @type suite_run_result :: %{
+          id: String.t(),
+          status: :pending | :running | :ok | :error,
+          testcases: [testcase_run_result]
+        }
+
+  @typedoc """
+  One testcase's outcome within a suite run. `steps` is exactly
+  `Maestro.Core.Runner.Step.run_steps/2`'s own `[step_result]` return value,
+  reused verbatim (already nests `Maestro.Core.AssertRunner.assertion_result()`
+  inside each step) no re-wrapping.
+  """
+  @type testcase_run_result :: %{
+          id: String.t(),
+          status: :ok | :error,
+          steps: [Maestro.Core.Runner.Step.step_result()]
+        }
+
+  @typedoc """
+  The full accumulated outcome of a `run/1` call, as returned by `result/1`.
+  `suites` is in the same order as the `entries` list passed to `run/1`.
+  Available (and correct, if partial) while the run is still `:running`
+  every suite entry is written exactly once, after that suite is fully
+  done, so a partial read is never a torn/half-written record.
+  """
+  @type run_result :: %{
+          run_id: run_id(),
+          status: run_status(),
+          suites: [suite_run_result]
+        }
+
+  @doc """
+  Resolves and runs `entries` (a mix of named suite references and/or inline
+  suite maps) as one run.
+
+  Resolution is fully synchronous and all-or-nothing: every entry is
+  resolved via `Maestro.Resources.Resolver.resolve/1` before this function
+  returns anything. If **any** entry fails to resolve, this returns
+  `{:error, resolve_errors}` (a list of `{index, reason}` pairs, `index`
+  being that entry's position in `entries`) and **nothing runs** — not even
+  entries that resolved fine. Only once every entry resolves does execution
+  actually start, in the background: this returns `{:ok, run_id}`
+  immediately, and the resolved suites execute sequentially (suite by
+  suite, testcase by testcase, matching `Maestro.Core.Runner.Step`'s
+  existing sequential model) while `status/1`/`result/1` can be polled for
+  progress and results.
+
+  `entries` must be a list `{:error, :invalid_entries}` is returned
+  synchronously (no run started) if it isn't.
+  """
+  @spec run([suite_entry]) ::
+          {:ok, run_id} | {:error, :invalid_entries | [{non_neg_integer, term}]}
+  def run(entries), do: Maestro.Core.Runner.run(entries)
+
+  @doc """
+  A lightweight, per-suite progress view for `run_id`: which suites are
+  pending, which is running, which are finished (and their outcome) —
+  without the full step/assertion payload `result/1` carries.
+  """
+  @spec status(run_id) :: {:ok, run_progress} | {:error, :not_found}
+  def status(run_id), do: Maestro.Core.Runner.status(run_id)
+
+  @doc """
+  The result for `run_id`, optionally scoped down to one suite and, within
+  it, one testcase both looked up by id, not index.
+
+  `result(run_id)` returns the full `t:run_result/0` tree, available (and
+  correct, if partial) while the run is still in progress.
+  `result(run_id, suite_id)` returns just that `t:suite_run_result/0`.
+  `result(run_id, suite_id, testcase_id)` returns just that
+  `t:testcase_run_result/0`. `{:error, :not_found}` covers an unknown
+  `run_id`, an unknown `suite_id`, or a `testcase_id` that doesn't match any
+  testcase in that suite (scoped, not a global testcase-id search) alike.
+
+  A `suite_id` that appears more than once across the entries passed to
+  `run/1` (ids are only guaranteed unique *within* one suite file, not
+  across independently-referenced suites in the same run) resolves to the
+  first match, in the same order the suites were passed to `run/1`.
+  """
+  @spec result(run_id) :: {:ok, run_result} | {:error, :not_found}
+  @spec result(run_id, String.t()) :: {:ok, suite_run_result} | {:error, :not_found}
+  @spec result(run_id, String.t(), String.t()) ::
+          {:ok, testcase_run_result} | {:error, :not_found}
+  def result(run_id), do: Maestro.Core.Runner.result(run_id)
+  def result(run_id, suite_id), do: Maestro.Core.Runner.result(run_id, suite_id)
+
+  def result(run_id, suite_id, testcase_id),
+    do: Maestro.Core.Runner.result(run_id, suite_id, testcase_id)
 end
