@@ -260,4 +260,24 @@ defmodule Maestro do
 
   def result(run_id, suite_id, testcase_id),
     do: Maestro.Core.Runner.result(run_id, suite_id, testcase_id)
+
+  @doc """
+  Renders `run_id`'s current result as a self-contained HTML report
+  string, without writing it anywhere. See `Maestro.Report.render/2`.
+  """
+  @spec render_report(run_id, module) :: {:ok, String.t()} | {:error, :not_found}
+  def render_report(run_id, layout \\ Maestro.Report.Layout.configured()),
+    do: Maestro.Report.render(run_id, layout)
+
+  @doc """
+  Renders and writes `run_id`'s report to disk
+  (`Maestro.Report.report_dir/0`, `maestro_report_<run_id>.html`). Called
+  automatically after every `run/1`/`run_test_plan/1` completes, unless
+  disabled via `config :maestro, :auto_report, false`. See
+  `Maestro.Report.generate/2`.
+  """
+  @spec generate_report(run_id, module) ::
+          :ok | {:error, :not_found | {:write_failed, term}}
+  def generate_report(run_id, layout \\ Maestro.Report.Layout.configured()),
+    do: Maestro.Report.generate(run_id, layout)
 end

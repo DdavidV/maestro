@@ -1,5 +1,7 @@
 import Config
 
+config :maestro, :report_dir, Path.join(System.tmp_dir!(), "maestro_test_reports")
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :maestro, MaestroWeb.Endpoint,

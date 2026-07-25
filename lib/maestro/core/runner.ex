@@ -49,12 +49,26 @@ defmodule Maestro.Core.Runner do
   Every level of this tree (`run_result` -> `suite_run_result` ->
   `testcase_run_result` -> `step_result` -> `assertion_result`) is kept
   fully intact end to end, nothing here summarizes or discards data
-  deliberately, since a future report generator needs to walk every
-  assertion of every step of every testcase of every suite in a run.
+  deliberately, since `Maestro.Report` needs to walk every assertion of
+  every step of every testcase of every suite in a run.
+
+  ## Automatic report generation
+
+  Once a run reaches a terminal status (`Store.finalize/1` on ordinary
+  completion, `Store.mark_crashed/1` if `execute_run/2` itself raised),
+  `Maestro.Report.generate/1` is called for that `run_id` unless
+  `config :maestro, :auto_report, false` is set. This happens strictly
+  *after* the terminal write, so `status/1`/`result/1` are never delayed
+  by it, and any failure (a bad custom `report_layout`, a disk error) is
+  caught and logged, never allowed to crash this run's `Task` or affect
+  its already-finalized status.
   """
+
+  require Logger
 
   alias Maestro.Core.Runner.Store
   alias Maestro.Core.Runner.Suite
+  alias Maestro.Report
   alias Maestro.Resources
   alias Maestro.Resources.Resolver
 
@@ -169,8 +183,28 @@ defmodule Maestro.Core.Runner do
     |> Enum.each(fn {suite, index} -> execute_suite(run_id, index, suite) end)
 
     Store.finalize(run_id)
+    generate_report(run_id)
   rescue
-    _exception -> Store.mark_crashed(run_id)
+    _exception ->
+      Store.mark_crashed(run_id)
+      generate_report(run_id)
+  end
+
+  defp generate_report(run_id) do
+    if Application.get_env(:maestro, :auto_report, true) do
+      case Report.generate(run_id) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("Maestro report generation failed for #{run_id}: #{inspect(reason)}")
+      end
+    end
+  rescue
+    exception ->
+      Logger.warning(
+        "Maestro report generation crashed for #{run_id}: #{Exception.message(exception)}"
+      )
   end
 
   defp execute_suite(run_id, index, suite) do

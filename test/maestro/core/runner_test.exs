@@ -382,4 +382,85 @@ defmodule Maestro.Core.RunnerTest do
       assert [{1, _reason}] = resolve_errors
     end
   end
+
+  describe "automatic report generation" do
+    setup do
+      report_dir =
+        Path.join(
+          System.tmp_dir!(),
+          "maestro_runner_report_test_#{System.unique_integer([:positive])}"
+        )
+
+      previous = Application.get_env(:maestro, :report_dir)
+      previous_layout = Application.get_env(:maestro, :report_layout)
+      previous_auto = Application.get_env(:maestro, :auto_report)
+      Application.put_env(:maestro, :report_dir, report_dir)
+
+      on_exit(fn ->
+        File.rm_rf!(report_dir)
+
+        if previous do
+          Application.put_env(:maestro, :report_dir, previous)
+        else
+          Application.delete_env(:maestro, :report_dir)
+        end
+
+        if previous_layout do
+          Application.put_env(:maestro, :report_layout, previous_layout)
+        else
+          Application.delete_env(:maestro, :report_layout)
+        end
+
+        if previous_auto do
+          Application.put_env(:maestro, :auto_report, previous_auto)
+        else
+          Application.delete_env(:maestro, :auto_report)
+        end
+      end)
+
+      %{report_dir: report_dir}
+    end
+
+    test "a report is written automatically after a passing run" do
+      {:ok, run_id} = Runner.run([inline_suite("s1")])
+      final = wait_until_done(run_id)
+
+      assert final.status == :ok
+      assert File.exists?(Maestro.Report.report_path(run_id))
+    end
+
+    test "a report is written automatically after a run that ends :error" do
+      failing_assert = [%{"matcher" => "test_matcher", "should_fail" => true, "expected" => nil}]
+      {:ok, run_id} = Runner.run([inline_suite("s1", assert: failing_assert)])
+      final = wait_until_done(run_id)
+
+      assert final.status == :error
+      assert File.exists?(Maestro.Report.report_path(run_id))
+    end
+
+    test "auto_report: false suppresses generation" do
+      Application.put_env(:maestro, :auto_report, false)
+
+      {:ok, run_id} = Runner.run([inline_suite("s1")])
+      wait_until_done(run_id)
+
+      refute File.exists?(Maestro.Report.report_path(run_id))
+    end
+
+    test "a crashing custom report_layout does not crash the run or corrupt run status" do
+      Application.put_env(:maestro, :report_layout, Maestro.TestCrashingReportLayout)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          {:ok, run_id} = Runner.run([inline_suite("s1")])
+          final = wait_until_done(run_id)
+
+          assert final.status == :ok
+          assert {:ok, %{status: :ok}} = Runner.result(run_id)
+          refute File.exists?(Maestro.Report.report_path(run_id))
+        end)
+
+      assert log =~ "Maestro report generation crashed"
+    end
+  end
 end
