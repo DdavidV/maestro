@@ -16,7 +16,13 @@ defmodule Maestro.Client.Registry do
   failing one returns `{:error, {:init_failed, reason}}`. One broken
   client (an unreachable dependency at boot, a failed connection pool
   start) failing shouldn't make every *other* client unusable.
+
+  If more than one discovered module registers the same `name/0`, `load!/0`
+  logs a warning (see `Maestro.Core.RegistryCollisions`) rather than
+  silently picking one.
   """
+
+  alias Maestro.Core.RegistryCollisions
 
   @persistent_term_key {__MODULE__, :clients}
 
@@ -33,7 +39,11 @@ defmodule Maestro.Client.Registry do
   """
   @spec load! :: :ok
   def load! do
-    clients = discover() |> Map.new(fn module -> {module.name(), build_entry(module)} end)
+    entries = discover() |> Enum.map(fn module -> {module.name(), module} end)
+
+    :ok = RegistryCollisions.warn_on_collisions("Maestro.Client.Registry", entries)
+
+    clients = Map.new(entries, fn {name, module} -> {name, build_entry(module)} end)
     :persistent_term.put(@persistent_term_key, clients)
     :ok
   end

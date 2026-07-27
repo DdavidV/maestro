@@ -12,14 +12,12 @@ defmodule Maestro.Generator.Registry do
   the actual marker `use Maestro.Generator` leaves behind.
 
   If more than one discovered module registers the same name, `load!/0`
-  logs a warning (which module ends up winning depends on
-  `Application.loaded_applications()` traversal order, not something
-  callers control or should rely on) rather than silently picking one a
-  same-module duplicate is instead a compile error, see
-  `Maestro.Generator.__before_compile__/1`.
+  logs a warning (see `Maestro.Core.RegistryCollisions`) rather than
+  silently picking one a same-module duplicate is instead a compile
+  error, see `Maestro.Generator.__before_compile__/1`.
   """
 
-  require Logger
+  alias Maestro.Core.RegistryCollisions
 
   @persistent_term_key {__MODULE__, :generators}
 
@@ -40,7 +38,7 @@ defmodule Maestro.Generator.Registry do
         Enum.map(module.__maestro_generators__(), fn {name, _function} -> {name, module} end)
       end)
 
-    warn_on_collisions(entries)
+    :ok = RegistryCollisions.warn_on_collisions("Maestro.Generator.Registry", entries)
 
     :persistent_term.put(@persistent_term_key, Map.new(entries))
     :ok
@@ -81,25 +79,5 @@ defmodule Maestro.Generator.Registry do
 
   defp generator_module?(module) do
     Code.ensure_loaded?(module) and function_exported?(module, :__maestro_generators__, 0)
-  end
-
-  @doc false
-  @spec warn_on_collisions([{String.t(), module}]) :: :ok
-  def warn_on_collisions(entries) do
-    entries
-    |> Enum.group_by(fn {name, _module} -> name end, fn {_name, module} -> module end)
-    |> Enum.each(fn {name, modules} ->
-      case Enum.uniq(modules) do
-        [_single] ->
-          :ok
-
-        modules ->
-          Logger.warning(
-            "Maestro.Generator.Registry: \"#{name}\" is registered by more than one module " <>
-              "(#{Enum.map_join(modules, ", ", &inspect/1)}) only one will be used, and which " <>
-              "one is not guaranteed to stay stable across runs. Rename one of them."
-          )
-      end
-    end)
   end
 end

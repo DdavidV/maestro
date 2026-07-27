@@ -1,8 +1,6 @@
 defmodule Maestro.Generator.RegistryTest do
   use ExUnit.Case, async: false
 
-  import ExUnit.CaptureLog
-
   alias Maestro.Generator.Registry
 
   setup do
@@ -34,48 +32,6 @@ defmodule Maestro.Generator.RegistryTest do
     test "is safe to call more than once" do
       assert :ok = Registry.load!()
       assert Registry.fetch("today") == {:ok, Maestro.Generators.Date}
-    end
-  end
-
-  describe "warn_on_collisions/1" do
-    test "logs a warning naming every module that registered the same name" do
-      entries = [
-        {"dup_name", Some.ModuleA},
-        {"dup_name", Some.ModuleB},
-        {"unique_name", Some.ModuleC}
-      ]
-
-      log =
-        capture_log(fn ->
-          assert :ok = Registry.warn_on_collisions(entries)
-        end)
-
-      assert log =~ "dup_name"
-      assert log =~ "Some.ModuleA"
-      assert log =~ "Some.ModuleB"
-      refute log =~ "unique_name"
-    end
-
-    test "logs nothing when every name is registered by exactly one module" do
-      entries = [{"a", Some.ModuleA}, {"b", Some.ModuleB}]
-
-      log =
-        capture_log(fn ->
-          assert :ok = Registry.warn_on_collisions(entries)
-        end)
-
-      assert log == ""
-    end
-
-    test "the same module registering the same name twice (duplicate discovery) is not a collision" do
-      entries = [{"a", Some.ModuleA}, {"a", Some.ModuleA}]
-
-      log =
-        capture_log(fn ->
-          assert :ok = Registry.warn_on_collisions(entries)
-        end)
-
-      assert log == ""
     end
   end
 end

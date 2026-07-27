@@ -11,7 +11,13 @@ defmodule Maestro.Assert.Registry do
   `init_matcher/0` — matchers are static code), so the cached table is just
   a name-to-module lookup, with no per-module init-failure isolation to
   worry about.
+
+  If more than one discovered module registers the same `name/0`, `load!/0`
+  logs a warning (see `Maestro.Core.RegistryCollisions`) rather than
+  silently picking one.
   """
+
+  alias Maestro.Core.RegistryCollisions
 
   @persistent_term_key {__MODULE__, :matchers}
 
@@ -26,8 +32,11 @@ defmodule Maestro.Assert.Registry do
   """
   @spec load! :: :ok
   def load! do
-    matchers = discover() |> Map.new(fn module -> {module.name(), module} end)
-    :persistent_term.put(@persistent_term_key, matchers)
+    entries = discover() |> Enum.map(fn module -> {module.name(), module} end)
+
+    :ok = RegistryCollisions.warn_on_collisions("Maestro.Assert.Registry", entries)
+
+    :persistent_term.put(@persistent_term_key, Map.new(entries))
     :ok
   end
 
