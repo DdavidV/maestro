@@ -8,6 +8,7 @@ defmodule Maestro.Application do
     Maestro.Resources.Schemas.load!()
     Maestro.Client.Registry.load!()
     Maestro.Assert.Registry.load!()
+    Maestro.Generator.Registry.load!()
 
     children = [
       MaestroWeb.Telemetry,

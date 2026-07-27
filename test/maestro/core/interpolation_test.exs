@@ -137,4 +137,113 @@ defmodule Maestro.Core.InterpolationTest do
       assert Interpolation.render(nil, %{}) == {:ok, nil}
     end
   end
+
+  describe "render/2 with $generated" do
+    setup do
+      :ok = Maestro.Generator.Registry.load!()
+      :ok
+    end
+
+    test "bare string form dispatches to the named generator" do
+      assert {:ok, [1, "two", 3]} =
+               Interpolation.render(
+                 %{"$generated" => %{"name" => "test_echo_args", "args" => [1, "two", 3]}},
+                 %{}
+               )
+    end
+
+    test "bare string form, nested inside a larger map, is recognized before the generic map-walk recurses" do
+      assert {:ok, %{"today" => today}} =
+               Interpolation.render(%{"today" => %{"$generated" => "today"}}, %{})
+
+      assert today == Date.to_iso8601(Date.utc_today())
+    end
+
+    test "bare string form, nested inside a list" do
+      assert {:ok, ["literal", today]} =
+               Interpolation.render(["literal", %{"$generated" => "today"}], %{})
+
+      assert today == Date.to_iso8601(Date.utc_today())
+    end
+
+    test "named form with args interpolates args against context before calling the generator" do
+      assert Interpolation.render(
+               %{"$generated" => %{"name" => "test_echo_args", "args" => ["{{value}}"]}},
+               %{"value" => "from-context"}
+             ) == {:ok, ["from-context"]}
+    end
+
+    test "named form's args default to [] when omitted" do
+      assert Interpolation.render(%{"$generated" => %{"name" => "test_echo_args"}}, %{}) ==
+               {:ok, []}
+    end
+
+    test "raw MFA form dispatches via SafeMFA directly, bypassing the registry" do
+      defmodule RawMfaTarget do
+        @moduledoc false
+        def triple(x), do: x * 3
+      end
+
+      assert Interpolation.render(
+               %{
+                 "$generated" => %{
+                   "module" => "Maestro.Core.InterpolationTest.RawMfaTarget",
+                   "function" => "triple",
+                   "args" => [7]
+                 }
+               },
+               %{}
+             ) == {:ok, 21}
+    end
+
+    test "raw MFA form's args are interpolated against context first" do
+      defmodule RawMfaTargetContext do
+        @moduledoc false
+        def echo(x), do: x
+      end
+
+      assert Interpolation.render(
+               %{
+                 "$generated" => %{
+                   "module" => "Maestro.Core.InterpolationTest.RawMfaTargetContext",
+                   "function" => "echo",
+                   "args" => ["{{value}}"]
+                 }
+               },
+               %{"value" => "hi"}
+             ) == {:ok, "hi"}
+    end
+
+    test "unknown generator name is a clean error" do
+      assert Interpolation.render(%{"$generated" => "does_not_exist"}, %{}) ==
+               {:error, {:generator_not_found, "does_not_exist"}}
+    end
+
+    test "a generator returning {:error, reason} propagates as generator_failed" do
+      assert Interpolation.render(%{"$generated" => "test_always_fails"}, %{}) ==
+               {:error, {:generator_failed, "test_always_fails", :always_fails}}
+    end
+
+    test "a generator that raises is rescued, not a crash" do
+      assert {:error, {:generator_failed, "test_always_raises", message}} =
+               Interpolation.render(%{"$generated" => "test_always_raises"}, %{})
+
+      assert message =~ "test generator boom"
+    end
+
+    test "a malformed $generated payload is a clean error" do
+      assert Interpolation.render(%{"$generated" => 42}, %{}) ==
+               {:error, {:invalid_generated_directive, 42}}
+
+      assert Interpolation.render(%{"$generated" => %{"nonsense" => true}}, %{}) ==
+               {:error, {:invalid_generated_directive, %{"nonsense" => true}}}
+    end
+
+    test "produces a fresh value on every render/2 call, not a cached one" do
+      {:ok, first} = Interpolation.render(%{"$generated" => "test_counter"}, %{})
+      {:ok, second} = Interpolation.render(%{"$generated" => "test_counter"}, %{})
+
+      assert first != second
+    end
+  end
 end

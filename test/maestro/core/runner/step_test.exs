@@ -9,6 +9,7 @@ defmodule Maestro.Core.Runner.StepTest do
   setup do
     :ok = ClientRegistry.load!()
     :ok = AssertRegistry.load!()
+    :ok = Maestro.Generator.Registry.load!()
     :ok
   end
 
@@ -53,6 +54,36 @@ defmodule Maestro.Core.Runner.StepTest do
 
       assert {:ok, {[result], _saved}} = Step.run_steps([step])
       assert result.rendered["options"] == %{"url" => "https://example.com/42"}
+    end
+  end
+
+  describe "run_steps/2 with a $generated dataset value" do
+    test "resolves through the full pipeline into the actual sent payload" do
+      step =
+        template_step(
+          payload: %{"today" => "{{today}}"},
+          dataset: %{data: %{"today" => %{"$generated" => "today"}}}
+        )
+
+      assert {:ok, {[result], _saved}} = Step.run_steps([step])
+      assert result.status == :ok
+      assert result.rendered["payload"] == %{"today" => Date.to_iso8601(Date.utc_today())}
+    end
+
+    test "a rows-dataset generates a fresh value per row" do
+      step =
+        template_step(
+          payload: %{"n" => "{{n}}"},
+          dataset: %{
+            rows: [
+              %{"n" => %{"$generated" => "test_counter"}},
+              %{"n" => %{"$generated" => "test_counter"}}
+            ]
+          }
+        )
+
+      assert {:ok, {[first, second], _saved}} = Step.run_steps([step])
+      assert first.rendered["payload"]["n"] != second.rendered["payload"]["n"]
     end
   end
 

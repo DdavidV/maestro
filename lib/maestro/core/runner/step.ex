@@ -19,8 +19,17 @@ defmodule Maestro.Core.Runner.Step do
   so whichever execution runs next sees whatever the immediately preceding
   one saved, regardless of whether that was a sibling step or another row
   of the same step. A step's render context is its own dataset fields
-  (the whole `"data"` bag, or one row) merged with accumulated saved
-  state, saved state winning on collision.
+  (the whole `"data"` bag, or one row) rendered via
+  `Maestro.Core.Interpolation.render/2` (so any `{"$generated": ...}`
+  value in the dataset resolves to a real, freshly-generated value here,
+  once per execution, before anything else happens) merged with
+  accumulated saved state, saved state winning on collision. The dataset
+  is rendered against itself merged with `saved` first (so a generator
+  can see prior `save`d state, e.g. an offset referencing an earlier
+  step's saved value), then the *resolved* dataset is what's merged with
+  `saved` for the final context a `$generated` failure (unknown
+  generator, a generator erroring/raising) is a step failure, same
+  category as a payload/options interpolation failure.
 
   ## Failure handling
 
@@ -115,38 +124,57 @@ defmodule Maestro.Core.Runner.Step do
   end
 
   defp run_single(step, row_or_data, saved) do
-    context = Map.merge(row_or_data, saved)
+    case build_context(row_or_data, saved) do
+      {:ok, context} ->
+        case dispatch(step, context) do
+          {:ok, rendered, response} ->
+            new_saved = extract_saves(step, response, saved)
 
-    case dispatch(step, context) do
-      {:ok, rendered, response} ->
-        new_saved = extract_saves(step, response, saved)
+            {status, assertion_results} =
+              AssertRunner.run_assertions(Map.get(step, :assert, []), response, context)
 
-        {status, assertion_results} =
-          AssertRunner.run_assertions(Map.get(step, :assert, []), response, context)
+            result = %{
+              name: step_name(step),
+              status: status,
+              client: step.client,
+              rendered: rendered,
+              response: response,
+              assertions: assertion_results
+            }
 
-        result = %{
-          name: step_name(step),
-          status: status,
-          client: step.client,
-          rendered: rendered,
-          response: response,
-          assertions: assertion_results
-        }
+            {[result], new_saved}
 
-        {[result], new_saved}
+          {:error, reason} ->
+            {[error_result(step, reason)], saved}
+        end
 
       {:error, reason} ->
-        result = %{
-          name: step_name(step),
-          status: :error,
-          client: step.client,
-          rendered: nil,
-          response: reason,
-          assertions: []
-        }
-
-        {[result], saved}
+        {[error_result(step, reason)], saved}
     end
+  end
+
+  # `saved` is merged in unresolved (never itself re-rendered it's
+  # already-resolved data extracted from a prior response, not raw dataset
+  # JSON) and wins on collision, same as before. `row_or_data` is rendered
+  # first so a `$generated` value in the dataset resolves (and can see
+  # `saved` state while doing so, for e.g. an offset referencing an
+  # earlier step's saved value) before becoming part of the context.
+  defp build_context(row_or_data, saved) do
+    case render(row_or_data, Map.merge(row_or_data, saved), :dataset_render_failed) do
+      {:ok, resolved} -> {:ok, Map.merge(resolved, saved)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp error_result(step, reason) do
+    %{
+      name: step_name(step),
+      status: :error,
+      client: step.client,
+      rendered: nil,
+      response: reason,
+      assertions: []
+    }
   end
 
   defp dispatch(step, context) do
