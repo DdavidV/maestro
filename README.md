@@ -43,7 +43,6 @@ Each schema file includes worked `examples` that double as fixtures for validati
 
 ## Further reading
 
-- [docs/json_match.md](docs/json_match.md) the default assertion matcher, for structural/value matching.
-- [docs/json_schema_match.md](docs/json_schema_match.md) an assertion matcher for validating a response
-  against a JSON Schema contract.
-- [docs/http_client.md](docs/http_client.md) the built-in `http` client, for sending HTTP/HTTPS requests.
+See [docs/README.md](docs/README.md) for the full documentation index —
+authoring suites/scenarios/templates/datasets/test plans, running them,
+and writing your own clients/matchers/generators.
