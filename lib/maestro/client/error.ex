@@ -30,6 +30,7 @@ defmodule Maestro.Client.Error do
           details: term
         }
 
+  @derive Jason.Encoder
   @enforce_keys [:stage, :reason]
   defstruct stage: nil, reason: nil, details: nil
 

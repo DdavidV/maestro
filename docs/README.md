@@ -19,6 +19,9 @@ them:
 
 - [maestro.md](maestro.md) `Maestro.run/1`/`run_test_plan/1`, checking
   progress and results.
+- REST API: a thin HTTP wrapper over the same functions. See
+  `priv/openapi/maestro.yaml` (served as Swagger UI at `/api/docs`) and
+  `lib/maestro_web/api/run_handler.ex`.
 - [report.md](report.md) generating the HTML report, what it contains,
   and writing a custom report layout.
 

@@ -24,6 +24,7 @@ defmodule Maestro.Assert.Reason do
           path: String.t() | nil
         }
 
+  @derive Jason.Encoder
   @enforce_keys [:reason]
   defstruct reason: nil, expected: nil, actual: nil, path: nil
 

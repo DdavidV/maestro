@@ -1,0 +1,372 @@
+openapi: 3.0.0
+info:
+  title: Maestro API
+  description: >
+    REST API over Maestro's public functions.
+  version: "1.0.0"
+tags:
+  - name: Runs
+    description: Starting runs and checking their progress/results.
+  - name: Reports
+    description: Rendering a run's result as an HTML report.
+paths:
+  /api/run:
+    post:
+      operationId: createRun
+      summary: Resolve and run a list of suites.
+      tags: [Runs]
+      description: >
+        Resolution is synchronous and all-or-nothing: if any entry fails
+        to resolve, nothing runs and 422 is returned with the resolve
+        errors. Otherwise a run starts in the background and 202 is
+        returned with its run_id immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRunEntries"
+      responses:
+        "202":
+          description: Every entry resolved; the run has started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunAccepted"
+        "422":
+          description: One or more entries failed to resolve. Nothing ran.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveErrors"
+        "400":
+          description: The request body was missing or not an array.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/test-plan/{name}/run:
+    post:
+      operationId: createTestPlanRun
+      summary: Run every suite in a named test plan.
+      tags: [Runs]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Test plan name, resolved under `<resource_dir>/test_plans/`.
+          schema:
+            type: string
+      responses:
+        "202":
+          description: The test plan's suites all resolved; the run has started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunAccepted"
+        "404":
+          description: No test plan by that name (missing file or fails schema validation).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The test plan was found, but one of its suites failed to resolve.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveErrors"
+
+  /api/runs/{run_id}/status:
+    get:
+      operationId: getRunStatus
+      summary: Lightweight per-suite progress view for a run.
+      tags: [Runs]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Progress for the run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunProgress"
+        "404":
+          description: Unknown run_id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/runs/{run_id}:
+    get:
+      operationId: getRunResult
+      summary: >
+        Full (or scoped) result for a run. Scope
+        down to one suite, and within it one testcase, with the
+        suite_id/testcase_id query parameters both are looked up by id,
+        not index.
+      tags: [Runs]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: suite_id
+          in: query
+          required: false
+          description: Scope the result down to this suite only.
+          schema:
+            type: string
+        - name: testcase_id
+          in: query
+          required: false
+          description: >
+            Scope the result down to this testcase only. Only honored
+            together with suite_id a testcase_id is looked up within
+            that one suite, not globally.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: >
+            The run's result, a single suite's result, or a single
+            testcase's result, depending on which query parameters were
+            given.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/RunResult"
+                  - $ref: "#/components/schemas/SuiteRunResult"
+                  - $ref: "#/components/schemas/TestcaseRunResult"
+        "404":
+          description: >
+            Unknown run_id, unknown suite_id, or a testcase_id that
+            doesn't match any testcase in that suite.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/runs/{run_id}/report:
+    get:
+      operationId: getRunReport
+      summary: >
+        Render the run's current result as a self-contained HTML report, without writing it to disk.
+      tags: [Reports]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: The rendered HTML report.
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: Unknown run_id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: createRunReport
+      summary: >
+        Render the run's current result and write it to disk, same as what happens automatically
+        after a run completes unless it is disabled.
+      tags: [Reports]
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "201":
+          description: The report was written to disk.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportGenerated"
+        "404":
+          description: Unknown run_id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: The report was rendered but writing it to disk failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  parameters:
+    RunId:
+      name: run_id
+      in: path
+      required: true
+      description: Opaque run identifier returned by createRun/createTestPlanRun.
+      schema:
+        type: string
+
+  schemas:
+    CreateRunEntries:
+      type: array
+      minItems: 1
+      description: >
+        Each entry is either a suite file path (resolved under
+        `<resource_dir>/suites/`) or an inline suite body, in any
+        mix. A malformed inline suite
+        surfaces as a 422 resolve error, the same as a bad file
+        reference.
+      items:
+        oneOf:
+          - type: string
+            minLength: 1
+            description: A suite file path, e.g. "checkout/smoke".
+          - type: object
+            required:
+              - id
+              - testcases
+            description: An inline suite body.
+            properties:
+              id:
+                type: string
+              testcases:
+                type: array
+                items:
+                  type: object
+
+    RunAccepted:
+      type: object
+      required:
+        - run_id
+      properties:
+        run_id:
+          type: string
+
+    ResolveErrors:
+      type: object
+      required:
+        - errors
+      properties:
+        errors:
+          type: array
+          description: One entry per failed `entries`/`test_suites` index.
+          items:
+            type: object
+            required:
+              - index
+              - reason
+            properties:
+              index:
+                type: integer
+                description: Position of the failing entry in the original list.
+              reason:
+                description: >
+                  The underlying resolve failure a bare reason (e.g.
+                  "not_found") for a top-level entry that couldn't be
+                  found at all, or a path-enriched object pinpointing
+                  where inside an otherwise-found suite the problem is.
+
+    RunProgress:
+      type: object
+      required:
+        - run_id
+        - status
+        - suites
+      properties:
+        run_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/RunStatus"
+        suites:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - status
+            properties:
+              id:
+                type: string
+              status:
+                $ref: "#/components/schemas/SuiteProgressStatus"
+
+    RunStatus:
+      type: string
+      enum: [running, ok, error]
+
+    SuiteProgressStatus:
+      type: string
+      enum: [pending, running, ok, error]
+
+    RunResult:
+      type: object
+      required:
+        - run_id
+        - status
+        - suites
+      properties:
+        run_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/RunStatus"
+        suites:
+          type: array
+          items:
+            $ref: "#/components/schemas/SuiteRunResult"
+
+    SuiteRunResult:
+      type: object
+      required:
+        - id
+        - status
+        - testcases
+      properties:
+        id:
+          type: string
+        status:
+          $ref: "#/components/schemas/SuiteProgressStatus"
+        testcases:
+          type: array
+          items:
+            $ref: "#/components/schemas/TestcaseRunResult"
+
+    TestcaseRunResult:
+      type: object
+      required:
+        - id
+        - status
+        - steps
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [ok, error]
+        steps:
+          type: array
+          description: >
+            One entry per executed step,
+            including its rendered payload/response and every assertion's
+            pass/fail detail. Left open-shaped here for what a step result contains.
+          items:
+            type: object
+
+    ReportGenerated:
+      type: object
+      required:
+        - run_id
+        - path
+      properties:
+        run_id:
+          type: string
+        path:
+          type: string
+          description: Absolute path of the written HTML report file.
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          description: Machine-readable reason for the failure.

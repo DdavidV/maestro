@@ -17,6 +17,7 @@ defmodule Maestro.Assert.AssertionResult do
           reasons: [Maestro.Assert.Reason.t()]
         }
 
+  @derive Jason.Encoder
   @enforce_keys [:status, :assertion, :actual]
   defstruct status: nil, assertion: nil, actual: nil, reasons: []
 end

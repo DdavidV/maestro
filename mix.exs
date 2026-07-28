@@ -68,6 +68,7 @@ defmodule Maestro.MixProject do
       {:bandit, "~> 1.5"},
       {:ex_json_schema, "~> 0.10"},
       {:req, "~> 0.5"},
+      {:openapi, "~> 0.3.1"},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end

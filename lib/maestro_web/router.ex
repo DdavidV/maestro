@@ -1,5 +1,6 @@
 defmodule MaestroWeb.Router do
   use MaestroWeb, :router
+  use Openapi.Phoenix
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -11,7 +12,7 @@ defmodule MaestroWeb.Router do
   end
 
   pipeline :api do
-    plug :accepts, ["json"]
+    plug :accepts, ["json", "html"]
   end
 
   scope "/", MaestroWeb do
@@ -20,8 +21,10 @@ defmodule MaestroWeb.Router do
     get "/", PageController, :home
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", MaestroWeb do
-  #   pipe_through :api
-  # end
+  scope "/" do
+    pipe_through :api
+
+    openapi({:maestro, "openapi/maestro.yaml"}, handler: MaestroWeb.API.RunHandler)
+    swagger_docs("/api/docs")
+  end
 end
