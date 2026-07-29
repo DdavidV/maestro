@@ -6,12 +6,11 @@ defmodule Maestro.Report.Layout do
 
   `Maestro.Report.DefaultLayout` is the built-in implementation. A host
   application can supply its own module implementing this single callback
-  and point `config :maestro, :report_layout` at it instead same
-  override convention `Maestro.Resources.resource_dir/0` uses for its own
-  config key, just for a compiled-module reference instead of a
-  filesystem path, since a report layout is HEEx/Elixir code, not a
-  runtime-loaded resource (unlike suites/scenarios/datasets/templates,
-  deliberately not modeled as a "resource kind").
+  and point `config :maestro, :report_layout` at it instead a
+  compiled-module reference instead of a filesystem path, since a report
+  layout is HEEx/Elixir code, not a runtime-loaded resource (unlike
+  suites/scenarios/datasets/templates, deliberately not modeled as a
+  "resource kind").
 
   Not named "template" to avoid confusion with Maestro's existing,
   unrelated `t:Maestro.resolved_template/0` concept (an HTTP request

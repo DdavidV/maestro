@@ -63,6 +63,7 @@ defmodule Maestro.Resources.Resolver do
 
   alias Maestro.Resources.Schemas
   alias Maestro.Resources
+  alias Maestro.Workspaces.Workspace
 
   @type dataset_body :: %{String.t() => map} | nil
   @type path_segment ::
@@ -73,25 +74,26 @@ defmodule Maestro.Resources.Resolver do
 
   @default_max_scenario_depth 50
 
-  @spec resolve(String.t() | map) :: {:ok, Maestro.suite()} | {:error, resolve_error | term}
-  def resolve(suite_reference) when is_binary(suite_reference) do
-    # Resources.fetch/2 already validates against the suite schema, so go
+  @spec resolve(Workspace.t(), String.t() | map) ::
+          {:ok, Maestro.suite()} | {:error, resolve_error | term}
+  def resolve(%Workspace{} = workspace, suite_reference) when is_binary(suite_reference) do
+    # Resources.fetch/3 already validates against the suite schema, so go
     # straight to expanding testcases instead of routing back through
-    # resolve/1's map clause, which would validate a second time.
-    with {:ok, suite} <- Resources.fetch(:suite, suite_reference) do
-      expand(suite)
+    # resolve/2's map clause, which would validate a second time.
+    with {:ok, suite} <- Resources.fetch(workspace, :suite, suite_reference) do
+      expand(workspace, suite)
     end
   end
 
-  def resolve(suite) when is_map(suite) do
+  def resolve(%Workspace{} = workspace, suite) when is_map(suite) do
     with :ok <- Schemas.validate(:suite, suite) do
-      expand(suite)
+      expand(workspace, suite)
     end
   end
 
-  defp expand(%{"testcases" => testcases} = suite) do
+  defp expand(workspace, %{"testcases" => testcases} = suite) do
     with :ok <- check_unique_testcase_ids(testcases),
-         {:ok, testcases} <- resolve_testcases(testcases) do
+         {:ok, testcases} <- resolve_testcases(workspace, testcases) do
       {:ok, atomize_suite(Map.put(suite, "testcases", testcases))}
     end
   end
@@ -114,11 +116,11 @@ defmodule Maestro.Resources.Resolver do
     end
   end
 
-  defp resolve_testcases(testcases) do
+  defp resolve_testcases(workspace, testcases) do
     testcases
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, []}, fn {testcase, index}, {:ok, acc} ->
-      case resolve_testcase(testcase) do
+      case resolve_testcase(workspace, testcase) do
         {:ok, testcase} ->
           {:cont, {:ok, [testcase | acc]}}
 
@@ -135,17 +137,17 @@ defmodule Maestro.Resources.Resolver do
     end
   end
 
-  defp resolve_testcase(%{"steps" => steps} = testcase) do
-    with {:ok, steps} <- resolve_steps(steps) do
+  defp resolve_testcase(workspace, %{"steps" => steps} = testcase) do
+    with {:ok, steps} <- resolve_steps(workspace, steps) do
       {:ok, Map.put(testcase, "steps", steps)}
     end
   end
 
-  def resolve_steps(steps, inherited_dataset \\ nil, scope \\ new_scope()) do
+  def resolve_steps(workspace, steps, inherited_dataset \\ nil, scope \\ new_scope()) do
     steps
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, []}, fn {step, index}, {:ok, acc} ->
-      case resolve_step(step, inherited_dataset, scope) do
+      case resolve_step(workspace, step, inherited_dataset, scope) do
         {:ok, resolved_step} ->
           {:cont, {:ok, [resolved_step | acc]}}
 
@@ -172,9 +174,9 @@ defmodule Maestro.Resources.Resolver do
   @doc false
   def new_scope, do: %{visited: [], depth: 0}
 
-  defp resolve_step(%{"template" => template} = step, inherited_dataset, _scope) do
-    with {:ok, template} <- resolve_template(template),
-         {:ok, dataset} <- resolve_dataset(Map.get(step, "dataset")),
+  defp resolve_step(workspace, %{"template" => template} = step, inherited_dataset, _scope) do
+    with {:ok, template} <- resolve_template(workspace, template),
+         {:ok, dataset} <- resolve_dataset(workspace, Map.get(step, "dataset")),
          {:ok, merged_dataset} <- fold_datasets([inherited_dataset, dataset]) do
       {:ok,
        step
@@ -183,7 +185,7 @@ defmodule Maestro.Resources.Resolver do
     end
   end
 
-  defp resolve_step(%{"scenario" => scenario_ref} = step, inherited_dataset, scope) do
+  defp resolve_step(workspace, %{"scenario" => scenario_ref} = step, inherited_dataset, scope) do
     %{visited: visited, depth: depth} = scope
 
     cond do
@@ -196,15 +198,17 @@ defmodule Maestro.Resources.Resolver do
         maybe_with_ref_path({:error, error}, :scenario, scenario_ref)
 
       true ->
-        with {:ok, scenario} <- resolve_scenario(scenario_ref),
-             {:ok, default_dataset} <- resolve_dataset(Map.get(scenario, "default_dataset")),
-             {:ok, dataset} <- resolve_dataset(Map.get(step, "dataset")),
+        with {:ok, scenario} <- resolve_scenario(workspace, scenario_ref),
+             {:ok, default_dataset} <-
+               resolve_dataset(workspace, Map.get(scenario, "default_dataset")),
+             {:ok, dataset} <- resolve_dataset(workspace, Map.get(step, "dataset")),
              {:ok, merged_dataset} <-
                fold_datasets([inherited_dataset, default_dataset, dataset]) do
           next_visited = if is_binary(scenario_ref), do: [scenario_ref | visited], else: visited
           next_scope = %{visited: next_visited, depth: depth + 1}
 
-          with {:ok, steps} <- resolve_steps(scenario["steps"], merged_dataset, next_scope) do
+          with {:ok, steps} <-
+                 resolve_steps(workspace, scenario["steps"], merged_dataset, next_scope) do
             {:ok,
              step
              |> Map.put(
@@ -219,23 +223,23 @@ defmodule Maestro.Resources.Resolver do
     end
   end
 
-  defp resolve_template(%{} = template), do: {:ok, template}
+  defp resolve_template(_workspace, %{} = template), do: {:ok, template}
 
-  defp resolve_template(template) when is_binary(template) do
-    with_path(Resources.fetch(:template, template), ref_segment(:template, template))
+  defp resolve_template(workspace, template) when is_binary(template) do
+    with_path(Resources.fetch(workspace, :template, template), ref_segment(:template, template))
   end
 
-  defp resolve_scenario(%{} = scenario), do: {:ok, scenario}
+  defp resolve_scenario(_workspace, %{} = scenario), do: {:ok, scenario}
 
-  defp resolve_scenario(scenario) when is_binary(scenario) do
-    with_path(Resources.fetch(:scenario, scenario), ref_segment(:scenario, scenario))
+  defp resolve_scenario(workspace, scenario) when is_binary(scenario) do
+    with_path(Resources.fetch(workspace, :scenario, scenario), ref_segment(:scenario, scenario))
   end
 
-  defp resolve_dataset(nil), do: {:ok, nil}
-  defp resolve_dataset(%{} = dataset), do: {:ok, dataset}
+  defp resolve_dataset(_workspace, nil), do: {:ok, nil}
+  defp resolve_dataset(_workspace, %{} = dataset), do: {:ok, dataset}
 
-  defp resolve_dataset(dataset) when is_binary(dataset) do
-    with_path(Resources.fetch(:dataset, dataset), ref_segment(:dataset, dataset))
+  defp resolve_dataset(workspace, dataset) when is_binary(dataset) do
+    with_path(Resources.fetch(workspace, :dataset, dataset), ref_segment(:dataset, dataset))
   end
 
   defp maybe_with_ref_path(error, kind, name) when is_binary(name),

@@ -57,20 +57,31 @@ defmodule Maestro.Client.Registry do
   """
   @spec fetch(String.t()) :: {:ok, entry} | {:error, reason}
   def fetch(name) when is_binary(name) do
-    clients =
-      case :persistent_term.get(@persistent_term_key, :not_loaded) do
-        :not_loaded ->
-          :ok = load!()
-          :persistent_term.get(@persistent_term_key)
-
-        clients ->
-          clients
-      end
+    clients = load_or_get()
 
     case Map.fetch(clients, name) do
       {:ok, {:ok, entry}} -> {:ok, entry}
       {:ok, {:error, init_reason}} -> {:error, {:init_failed, init_reason}}
       :error -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Every registered client name, e.g. for a UI picker/dropdown.
+
+  Triggers `load!/0` on first use, same as `fetch/1`.
+  """
+  @spec names() :: [String.t()]
+  def names, do: load_or_get() |> Map.keys()
+
+  defp load_or_get do
+    case :persistent_term.get(@persistent_term_key, :not_loaded) do
+      :not_loaded ->
+        :ok = load!()
+        :persistent_term.get(@persistent_term_key)
+
+      clients ->
+        clients
     end
   end
 

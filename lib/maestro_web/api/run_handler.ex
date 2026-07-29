@@ -10,37 +10,47 @@ defmodule MaestroWeb.API.RunHandler do
   import Plug.Conn
 
   @doc """
-  createRun: POST /run -> Maestro.run/1.
+  createRun: POST /run -> Maestro.run/2.
 
-  The request body is a bare JSON array, which `Plug.Parsers.JSON` parses
-  into `params["_json"]` rather than `params` itself (a top-level JSON
-  array can't be merged into `conn.params`, which is always a map).
+  `workspace_id` selects an already-registered workspace; `entries` is the
+  same list `Maestro.run/2` itself takes.
   """
-  def create_run(conn, %{"_json" => entries}) when is_list(entries) do
-    case Maestro.run(entries) do
-      {:ok, run_id} ->
-        json(conn, 202, %{run_id: run_id})
+  def create_run(conn, %{"workspace_id" => workspace_id, "entries" => entries})
+      when is_binary(workspace_id) and is_list(entries) do
+    with {:ok, workspace} <- fetch_workspace(workspace_id) do
+      case Maestro.run(workspace, entries) do
+        {:ok, run_id} ->
+          json(conn, 202, %{run_id: run_id})
 
-      {:error, resolve_errors} ->
-        json(conn, 422, %{errors: Enum.map(resolve_errors, &resolve_error_entry/1)})
+        {:error, resolve_errors} ->
+          json(conn, 422, %{errors: Enum.map(resolve_errors, &resolve_error_entry/1)})
+      end
+    else
+      {:error, :workspace_not_found} ->
+        json(conn, 404, %{error: %{workspace_not_found: workspace_id}})
     end
   end
 
   def create_run(conn, _params) do
-    json(conn, 400, %{error: "request body must be an array"})
+    json(conn, 400, %{error: "request body must have workspace_id (string) and entries (array)"})
   end
 
-  @doc "createTestPlanRun: POST /test-plan/{name}/run -> Maestro.run_test_plan/1."
-  def create_test_plan_run(conn, %{"name" => name}) do
-    case Maestro.run_test_plan(name) do
-      {:ok, run_id} ->
-        json(conn, 202, %{run_id: run_id})
+  @doc "createTestPlanRun: POST /workspaces/{workspace_id}/test-plan/{name}/run -> Maestro.run_test_plan/2."
+  def create_test_plan_run(conn, %{"workspace_id" => workspace_id, "name" => name}) do
+    with {:ok, workspace} <- fetch_workspace(workspace_id) do
+      case Maestro.run_test_plan(workspace, name) do
+        {:ok, run_id} ->
+          json(conn, 202, %{run_id: run_id})
 
-      {:error, {:test_plan_not_found, ^name}} ->
-        json(conn, 404, %{error: %{test_plan_not_found: name}})
+        {:error, {:test_plan_not_found, ^name}} ->
+          json(conn, 404, %{error: %{test_plan_not_found: name}})
 
-      {:error, resolve_errors} ->
-        json(conn, 422, %{errors: Enum.map(resolve_errors, &resolve_error_entry/1)})
+        {:error, resolve_errors} ->
+          json(conn, 422, %{errors: Enum.map(resolve_errors, &resolve_error_entry/1)})
+      end
+    else
+      {:error, :workspace_not_found} ->
+        json(conn, 404, %{error: %{workspace_not_found: workspace_id}})
     end
   end
 
@@ -101,6 +111,13 @@ defmodule MaestroWeb.API.RunHandler do
 
       {:error, {:write_failed, reason}} ->
         json(conn, 500, %{error: %{write_failed: inspect(reason)}})
+    end
+  end
+
+  defp fetch_workspace(workspace_id) do
+    case Maestro.Workspaces.get(workspace_id) do
+      {:ok, workspace} -> {:ok, workspace}
+      {:error, :not_found} -> {:error, :workspace_not_found}
     end
   end
 

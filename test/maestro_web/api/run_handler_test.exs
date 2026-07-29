@@ -1,7 +1,7 @@
 defmodule MaestroWeb.API.RunHandlerTest do
   use MaestroWeb.ConnCase, async: false
 
-  import Maestro.TestUtils
+  import Maestro.WorkspaceFixtures
 
   @valid_suite %{
     "id" => "api_smoke_suite",
@@ -23,23 +23,8 @@ defmodule MaestroWeb.API.RunHandlerTest do
   }
 
   setup do
-    dir = Path.join(System.tmp_dir!(), "maestro_test_#{System.unique_integer([:positive])}")
-    File.mkdir_p!(dir)
-
-    previous = Application.get_env(:maestro, :resource_dir)
-    Application.put_env(:maestro, :resource_dir, dir)
-
-    on_exit(fn ->
-      File.rm_rf!(dir)
-
-      if previous do
-        Application.put_env(:maestro, :resource_dir, previous)
-      else
-        Application.delete_env(:maestro, :resource_dir)
-      end
-    end)
-
-    :ok
+    :ok = isolate_workspace_registry!()
+    %{workspace: workspace_fixture()}
   end
 
   defp wait_until_done(run_id, tries \\ 50) do
@@ -54,14 +39,20 @@ defmodule MaestroWeb.API.RunHandlerTest do
   end
 
   describe "POST /api/run" do
-    defp post_entries(conn, entries) do
+    defp post_run(conn, body) when is_map(body) do
       conn
       |> put_req_header("content-type", "application/json")
-      |> post(~p"/api/run", Jason.encode!(entries))
+      |> post(~p"/api/run", Jason.encode!(body))
     end
 
-    test "202s and starts a run for a valid inline suite", %{conn: conn} do
-      conn = post_entries(conn, [@valid_suite])
+    defp post_run(conn, non_map_body) do
+      conn
+      |> put_req_header("content-type", "application/json")
+      |> post(~p"/api/run", Jason.encode!(non_map_body))
+    end
+
+    test "202s and starts a run for a valid inline suite", %{conn: conn, workspace: workspace} do
+      conn = post_run(conn, %{"workspace_id" => workspace.id, "entries" => [@valid_suite]})
 
       assert %{"run_id" => run_id} = json_response(conn, 202)
       assert is_binary(run_id)
@@ -70,63 +61,108 @@ defmodule MaestroWeb.API.RunHandlerTest do
       assert final.status == :ok
     end
 
-    test "accepts a mix of inline suites and file-path references", %{conn: conn} do
-      write_resource!("suites", "api_ref_suite", @valid_suite)
+    test "accepts a mix of inline suites and file-path references", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :suite, "api_ref_suite", @valid_suite)
 
-      conn = post_entries(conn, ["api_ref_suite", @valid_suite])
+      conn =
+        post_run(conn, %{
+          "workspace_id" => workspace.id,
+          "entries" => ["api_ref_suite", @valid_suite]
+        })
 
       assert %{"run_id" => run_id} = json_response(conn, 202)
       final = wait_until_done(run_id)
       assert final.status == :ok
     end
 
-    test "422s with per-index errors when a suite fails to resolve", %{conn: conn} do
-      conn = post_entries(conn, ["does/not/exist", @valid_suite])
+    test "422s with per-index errors when a suite fails to resolve", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      conn =
+        post_run(conn, %{
+          "workspace_id" => workspace.id,
+          "entries" => ["does/not/exist", @valid_suite]
+        })
 
       assert %{"errors" => [%{"index" => 0, "reason" => "not_found"}]} =
                json_response(conn, 422)
     end
 
-    test "400s when the body is an object instead of an array", %{conn: conn} do
-      conn = post_entries(conn, %{})
+    test "404s for an unknown workspace_id", %{conn: conn} do
+      conn =
+        post_run(conn, %{"workspace_id" => "does-not-exist", "entries" => [@valid_suite]})
 
-      assert %{"error" => "request body must be an array"} = json_response(conn, 400)
+      assert %{"error" => %{"workspace_not_found" => "does-not-exist"}} =
+               json_response(conn, 404)
     end
 
-    test "400s when the body is neither an object nor an array", %{conn: conn} do
-      conn = post_entries(conn, "not-a-list")
+    test "400s when workspace_id is missing", %{conn: conn} do
+      conn = post_run(conn, %{"entries" => [@valid_suite]})
 
-      assert %{"error" => "request body must be an array"} = json_response(conn, 400)
+      assert %{"error" => error} = json_response(conn, 400)
+      assert error =~ "workspace_id"
+    end
+
+    test "400s when entries is missing", %{conn: conn, workspace: workspace} do
+      conn = post_run(conn, %{"workspace_id" => workspace.id})
+
+      assert %{"error" => error} = json_response(conn, 400)
+      assert error =~ "entries"
+    end
+
+    test "400s when entries isn't an array", %{conn: conn, workspace: workspace} do
+      conn = post_run(conn, %{"workspace_id" => workspace.id, "entries" => "not-a-list"})
+
+      assert %{"error" => error} = json_response(conn, 400)
+      assert error =~ "entries"
+    end
+
+    test "400s when the body is not an object at all", %{conn: conn} do
+      conn = post_run(conn, "not-an-object")
+
+      assert %{"error" => error} = json_response(conn, 400)
+      assert error =~ "workspace_id"
     end
   end
 
-  describe "POST /api/test-plan/:name/run" do
-    test "202s and runs every suite in the named test plan", %{conn: conn} do
-      write_resource!("suites", "api_plan_suite", @valid_suite)
+  describe "POST /api/workspaces/:workspace_id/test-plan/:name/run" do
+    test "202s and runs every suite in the named test plan", %{conn: conn, workspace: workspace} do
+      resource_fixture!(workspace, :suite, "api_plan_suite", @valid_suite)
 
-      write_resource!("test_plans", "api_nightly", %{
+      resource_fixture!(workspace, :test_plan, "api_nightly", %{
         "id" => "api_nightly",
         "test_suites" => ["api_plan_suite"]
       })
 
-      conn = post(conn, ~p"/api/test-plan/api_nightly/run")
+      conn = post(conn, ~p"/api/workspaces/#{workspace.id}/test-plan/api_nightly/run")
 
       assert %{"run_id" => run_id} = json_response(conn, 202)
       final = wait_until_done(run_id)
       assert final.status == :ok
     end
 
-    test "404s for an unknown test plan name", %{conn: conn} do
-      conn = post(conn, ~p"/api/test-plan/does-not-exist/run")
+    test "404s for an unknown test plan name", %{conn: conn, workspace: workspace} do
+      conn = post(conn, ~p"/api/workspaces/#{workspace.id}/test-plan/does-not-exist/run")
 
       assert %{"error" => %{"test_plan_not_found" => "does-not-exist"}} =
+               json_response(conn, 404)
+    end
+
+    test "404s for an unknown workspace_id", %{conn: conn} do
+      conn = post(conn, ~p"/api/workspaces/does-not-exist/test-plan/anything/run")
+
+      assert %{"error" => %{"workspace_not_found" => "does-not-exist"}} =
                json_response(conn, 404)
     end
   end
 
   describe "GET /api/runs/:run_id/status" do
-    test "200s with per-suite progress", %{conn: conn} do
-      {:ok, run_id} = Maestro.run([@valid_suite])
+    test "200s with per-suite progress", %{conn: conn, workspace: workspace} do
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
       wait_until_done(run_id)
 
       conn = get(conn, ~p"/api/runs/#{run_id}/status")
@@ -142,8 +178,8 @@ defmodule MaestroWeb.API.RunHandlerTest do
   end
 
   describe "GET /api/runs/:run_id" do
-    test "200s with the full result", %{conn: conn} do
-      {:ok, run_id} = Maestro.run([@valid_suite])
+    test "200s with the full result", %{conn: conn, workspace: workspace} do
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
       wait_until_done(run_id)
 
       conn = get(conn, ~p"/api/runs/#{run_id}")
@@ -152,8 +188,8 @@ defmodule MaestroWeb.API.RunHandlerTest do
                json_response(conn, 200)
     end
 
-    test "scopes to one suite with ?suite_id=", %{conn: conn} do
-      {:ok, run_id} = Maestro.run([@valid_suite])
+    test "scopes to one suite with ?suite_id=", %{conn: conn, workspace: workspace} do
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
       wait_until_done(run_id)
 
       conn = get(conn, ~p"/api/runs/#{run_id}?suite_id=api_smoke_suite")
@@ -162,8 +198,11 @@ defmodule MaestroWeb.API.RunHandlerTest do
                json_response(conn, 200)
     end
 
-    test "scopes to one testcase with ?suite_id=&testcase_id=", %{conn: conn} do
-      {:ok, run_id} = Maestro.run([@valid_suite])
+    test "scopes to one testcase with ?suite_id=&testcase_id=", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
       wait_until_done(run_id)
 
       conn = get(conn, ~p"/api/runs/#{run_id}?suite_id=api_smoke_suite&testcase_id=tc1")
@@ -171,7 +210,10 @@ defmodule MaestroWeb.API.RunHandlerTest do
       assert %{"id" => "tc1", "steps" => [_step]} = json_response(conn, 200)
     end
 
-    test "encodes assertion failures (AssertionResult/Reason) without crashing", %{conn: conn} do
+    test "encodes assertion failures (AssertionResult/Reason) without crashing", %{
+      conn: conn,
+      workspace: workspace
+    } do
       suite = %{
         "id" => "api_assert_suite",
         "testcases" => [
@@ -192,7 +234,7 @@ defmodule MaestroWeb.API.RunHandlerTest do
         ]
       }
 
-      {:ok, run_id} = Maestro.run([suite])
+      {:ok, run_id} = Maestro.run(workspace, [suite])
       wait_until_done(run_id)
 
       conn = get(conn, ~p"/api/runs/#{run_id}")
@@ -204,7 +246,10 @@ defmodule MaestroWeb.API.RunHandlerTest do
       assert reason["reason"] == "expected_key_missing"
     end
 
-    test "encodes a dispatch failure (Client.Error) without crashing", %{conn: conn} do
+    test "encodes a dispatch failure (Client.Error) without crashing", %{
+      conn: conn,
+      workspace: workspace
+    } do
       suite = %{
         "id" => "api_error_suite",
         "testcases" => [
@@ -221,7 +266,7 @@ defmodule MaestroWeb.API.RunHandlerTest do
         ]
       }
 
-      {:ok, run_id} = Maestro.run([suite])
+      {:ok, run_id} = Maestro.run(workspace, [suite])
       wait_until_done(run_id)
 
       conn = get(conn, ~p"/api/runs/#{run_id}")
@@ -239,8 +284,8 @@ defmodule MaestroWeb.API.RunHandlerTest do
   end
 
   describe "GET /api/runs/:run_id/report" do
-    test "200s with the rendered HTML report", %{conn: conn} do
-      {:ok, run_id} = Maestro.run([@valid_suite])
+    test "200s with the rendered HTML report", %{conn: conn, workspace: workspace} do
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
       wait_until_done(run_id)
 
       conn = get(conn, ~p"/api/runs/#{run_id}/report")
@@ -257,8 +302,8 @@ defmodule MaestroWeb.API.RunHandlerTest do
   end
 
   describe "POST /api/runs/:run_id/report" do
-    test "201s and writes the report to disk", %{conn: conn} do
-      {:ok, run_id} = Maestro.run([@valid_suite])
+    test "201s and writes the report to disk", %{conn: conn, workspace: workspace} do
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
       wait_until_done(run_id)
 
       conn = post(conn, ~p"/api/runs/#{run_id}/report")

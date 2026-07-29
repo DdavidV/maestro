@@ -32,8 +32,7 @@ defmodule Maestro.Report do
   @doc """
   The directory reports are written under. Reads
   `config :maestro, :report_dir`, falling back to `priv/reports` under
-  Maestro's own `priv_dir` if unset same convention as
-  `Maestro.Resources.resource_dir/0`.
+  Maestro's own `priv_dir` if unset.
   """
   @spec report_dir() :: String.t()
   def report_dir do

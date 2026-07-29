@@ -84,7 +84,8 @@ defmodule Mix.Tasks.Maestro.DemoReport do
 
     Application.put_env(:maestro, :auto_report, false)
 
-    {:ok, run_id} = Runner.run(demo_suites())
+    workspace = demo_workspace()
+    {:ok, run_id} = Runner.run(workspace, demo_suites())
     final = wait_until_done(run_id)
 
     Mix.shell().info("Demo run #{run_id} finished: #{final.status}")
@@ -98,6 +99,19 @@ defmodule Mix.Tasks.Maestro.DemoReport do
 
       {:error, reason} ->
         Mix.raise("Failed to render demo report: #{inspect(reason)}")
+    end
+  end
+
+  defp demo_workspace do
+    root_dir = Path.join([File.cwd!(), "tmp", "demo_report_workspace"])
+
+    case Maestro.Workspaces.list() |> Enum.find(&(&1.root_dir == Path.expand(root_dir))) do
+      nil ->
+        {:ok, workspace} = Maestro.Workspaces.create("Demo Report", root_dir)
+        workspace
+
+      workspace ->
+        workspace
     end
   end
 

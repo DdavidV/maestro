@@ -186,10 +186,13 @@ defmodule Maestro do
 
   @doc """
   Resolves and runs `entries` (a mix of named suite references and/or inline
-  suite maps) as one run.
+  suite maps) as one run, within `workspace` (see `Maestro.Workspaces`) —
+  every file-path entry, and every reference a resolved suite makes to a
+  scenario/template/dataset, is resolved against that one workspace's own
+  directory only.
 
   Resolution is fully synchronous and all-or-nothing: every entry is
-  resolved via `Maestro.Resources.Resolver.resolve/1` before this function
+  resolved via `Maestro.Resources.Resolver.resolve/2` before this function
   returns anything. If **any** entry fails to resolve, this returns
   `{:error, resolve_errors}` (a list of `{index, reason}` pairs, `index`
   being that entry's position in `entries`) and **nothing runs** — not even
@@ -203,28 +206,28 @@ defmodule Maestro do
   `entries` must be a list `{:error, :invalid_entries}` is returned
   synchronously (no run started) if it isn't.
   """
-  @spec run([suite_entry]) ::
+  @spec run(Maestro.Workspaces.Workspace.t(), [suite_entry]) ::
           {:ok, run_id} | {:error, :invalid_entries | [{non_neg_integer, term}]}
-  def run(entries), do: Maestro.Core.Runner.run(entries)
+  def run(workspace, entries), do: Maestro.Core.Runner.run(workspace, entries)
 
   @doc """
-  Fetches the named test plan (see `priv/schemas/test_plan.schema.json`) and
-  runs its `test_suites` exactly as if that list had been passed to `run/1`
-  directly same async execution model, same all-or-nothing resolution,
-  same `status/1`/`result/1` polling afterward.
+  Fetches the named test plan (see `priv/schemas/test_plan.schema.json`)
+  within `workspace` and runs its `test_suites` exactly as if that list had
+  been passed to `run/2` directly same async execution model, same
+  all-or-nothing resolution, same `status/1`/`result/1` polling afterward.
 
   Returns `{:error, {:test_plan_not_found, name}}` if `name` doesn't resolve
   to a valid test plan file (missing, unreadable, or fails schema
   validation) before anything runs. A test plan only references suites by
   file path (see the schema); if any of those suite files then fail to
-  resolve, that's reported the same way `run/1` itself reports it
+  resolve, that's reported the same way `run/2` itself reports it
   `{:error, resolve_errors}`.
   """
-  @spec run_test_plan(String.t()) ::
+  @spec run_test_plan(Maestro.Workspaces.Workspace.t(), String.t()) ::
           {:ok, run_id}
           | {:error,
              {:test_plan_not_found, String.t()} | :invalid_entries | [{non_neg_integer, term}]}
-  def run_test_plan(name), do: Maestro.Core.Runner.run_test_plan(name)
+  def run_test_plan(workspace, name), do: Maestro.Core.Runner.run_test_plan(workspace, name)
 
   @doc """
   A lightweight, per-suite progress view for `run_id`: which suites are

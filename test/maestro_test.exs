@@ -1,10 +1,15 @@
 defmodule MaestroTest do
   use ExUnit.Case, async: false
 
-  import Maestro.TestUtils
+  import Maestro.WorkspaceFixtures
 
-  describe "run/1, status/1, result/1 delegate to Maestro.Core.Runner" do
-    test "a valid inline suite runs end-to-end through the public API" do
+  setup do
+    :ok = isolate_workspace_registry!()
+    %{workspace: workspace_fixture()}
+  end
+
+  describe "run/2, status/1, result/1 delegate to Maestro.Core.Runner" do
+    test "a valid inline suite runs end-to-end through the public API", %{workspace: workspace} do
       suite = %{
         "id" => "smoke_suite",
         "testcases" => [
@@ -24,7 +29,7 @@ defmodule MaestroTest do
         ]
       }
 
-      assert {:ok, run_id} = Maestro.run([suite])
+      assert {:ok, run_id} = Maestro.run(workspace, [suite])
       assert is_binary(run_id)
 
       final = wait_until_done(run_id)
@@ -36,8 +41,8 @@ defmodule MaestroTest do
       assert {:ok, %{id: "tc1"}} = Maestro.result(run_id, "smoke_suite", "tc1")
     end
 
-    test "invalid entries surfaces the same error as Runner" do
-      assert Maestro.run(%{"not" => "a list"}) == {:error, :invalid_entries}
+    test "invalid entries surfaces the same error as Runner", %{workspace: workspace} do
+      assert Maestro.run(workspace, %{"not" => "a list"}) == {:error, :invalid_entries}
     end
 
     test "status/1 and result/1,2,3 report :not_found for an unknown run_id" do
@@ -48,31 +53,11 @@ defmodule MaestroTest do
     end
   end
 
-  describe "run_test_plan/1 delegates to Maestro.Core.Runner" do
-    setup do
-      dir =
-        Path.join(System.tmp_dir!(), "maestro_test_#{System.unique_integer([:positive])}")
-
-      File.mkdir_p!(dir)
-
-      previous = Application.get_env(:maestro, :resource_dir)
-      Application.put_env(:maestro, :resource_dir, dir)
-
-      on_exit(fn ->
-        File.rm_rf!(dir)
-
-        if previous do
-          Application.put_env(:maestro, :resource_dir, previous)
-        else
-          Application.delete_env(:maestro, :resource_dir)
-        end
-      end)
-
-      %{dir: dir}
-    end
-
-    test "runs the named test plan's suites end-to-end through the public API" do
-      write_resource!("suites", "plan_suite", %{
+  describe "run_test_plan/2 delegates to Maestro.Core.Runner" do
+    test "runs the named test plan's suites end-to-end through the public API", %{
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :suite, "plan_suite", %{
         "id" => "plan_suite",
         "testcases" => [
           %{
@@ -91,20 +76,20 @@ defmodule MaestroTest do
         ]
       })
 
-      write_resource!("test_plans", "nightly", %{
+      resource_fixture!(workspace, :test_plan, "nightly", %{
         "id" => "nightly",
         "test_suites" => ["plan_suite"]
       })
 
-      assert {:ok, run_id} = Maestro.run_test_plan("nightly")
+      assert {:ok, run_id} = Maestro.run_test_plan(workspace, "nightly")
       final = wait_until_done(run_id)
 
       assert final.status == :ok
       assert {:ok, %{suites: [%{id: "plan_suite"}]}} = Maestro.result(run_id)
     end
 
-    test "an unknown test plan name surfaces the same error as Runner" do
-      assert Maestro.run_test_plan("does_not_exist") ==
+    test "an unknown test plan name surfaces the same error as Runner", %{workspace: workspace} do
+      assert Maestro.run_test_plan(workspace, "does_not_exist") ==
                {:error, {:test_plan_not_found, "does_not_exist"}}
     end
   end

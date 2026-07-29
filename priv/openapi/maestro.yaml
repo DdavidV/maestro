@@ -13,19 +13,22 @@ paths:
   /api/run:
     post:
       operationId: createRun
-      summary: Resolve and run a list of suites.
+      summary: Resolve and run a list of suites, within a workspace.
       tags: [Runs]
       description: >
-        Resolution is synchronous and all-or-nothing: if any entry fails
-        to resolve, nothing runs and 422 is returned with the resolve
-        errors. Otherwise a run starts in the background and 202 is
-        returned with its run_id immediately.
+        workspace_id selects an already-registered workspace (see
+        Maestro.Workspaces) every entry, and every reference a resolved
+        suite makes, is resolved against that one workspace's own
+        directory only. Resolution is synchronous and all-or-nothing: if
+        any entry fails to resolve, nothing runs and 422 is returned with
+        the resolve errors. Otherwise a run starts in the background and
+        202 is returned with its run_id immediately.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateRunEntries"
+              $ref: "#/components/schemas/CreateRunRequest"
       responses:
         "202":
           description: Every entry resolved; the run has started.
@@ -33,6 +36,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RunAccepted"
+        "404":
+          description: Unknown workspace_id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: One or more entries failed to resolve. Nothing ran.
           content:
@@ -40,22 +49,28 @@ paths:
               schema:
                 $ref: "#/components/schemas/ResolveErrors"
         "400":
-          description: The request body was missing or not an array.
+          description: The request body was malformed (missing workspace_id, or entries not an array).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /api/test-plan/{name}/run:
+  /api/workspaces/{workspace_id}/test-plan/{name}/run:
     post:
       operationId: createTestPlanRun
-      summary: Run every suite in a named test plan.
+      summary: Run every suite in a named test plan, within a workspace.
       tags: [Runs]
       parameters:
+        - name: workspace_id
+          in: path
+          required: true
+          description: An already-registered workspace (see Maestro.Workspaces).
+          schema:
+            type: string
         - name: name
           in: path
           required: true
-          description: Test plan name, resolved under `<resource_dir>/test_plans/`.
+          description: Test plan name, resolved under `<workspace root>/test_plans/`.
           schema:
             type: string
       responses:
@@ -66,7 +81,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/RunAccepted"
         "404":
-          description: No test plan by that name (missing file or fails schema validation).
+          description: Unknown workspace_id, or no test plan by that name (missing file or fails schema validation).
           content:
             application/json:
               schema:
@@ -207,32 +222,41 @@ components:
         type: string
 
   schemas:
-    CreateRunEntries:
-      type: array
-      minItems: 1
-      description: >
-        Each entry is either a suite file path (resolved under
-        `<resource_dir>/suites/`) or an inline suite body, in any
-        mix. A malformed inline suite
-        surfaces as a 422 resolve error, the same as a bad file
-        reference.
-      items:
-        oneOf:
-          - type: string
-            minLength: 1
-            description: A suite file path, e.g. "checkout/smoke".
-          - type: object
-            required:
-              - id
-              - testcases
-            description: An inline suite body.
-            properties:
-              id:
-                type: string
-              testcases:
-                type: array
-                items:
-                  type: object
+    CreateRunRequest:
+      type: object
+      required:
+        - workspace_id
+        - entries
+      properties:
+        workspace_id:
+          type: string
+          description: An already-registered workspace (see Maestro.Workspaces).
+        entries:
+          type: array
+          minItems: 1
+          description: >
+            Each entry is either a suite file path (resolved under
+            `<workspace root>/suites/`) or an inline suite body, in any
+            mix. A malformed inline suite
+            surfaces as a 422 resolve error, the same as a bad file
+            reference.
+          items:
+            oneOf:
+              - type: string
+                minLength: 1
+                description: A suite file path, e.g. "checkout/smoke".
+              - type: object
+                required:
+                  - id
+                  - testcases
+                description: An inline suite body.
+                properties:
+                  id:
+                    type: string
+                  testcases:
+                    type: array
+                    items:
+                      type: object
 
     RunAccepted:
       type: object

@@ -1,0 +1,118 @@
+defmodule Maestro.WorkspacesTest do
+  use ExUnit.Case, async: false
+
+  import Maestro.WorkspaceFixtures
+
+  setup do
+    :ok = isolate_workspace_registry!()
+    :ok
+  end
+
+  describe "workspace_fixture/0 isolation" do
+    test "operates against an isolated registry path, not the configured (real) one" do
+      real_path = Maestro.Workspaces.Store.configured_registry_path()
+      assert Maestro.Workspaces.Store.registry_path() != real_path
+
+      # The real (application-boot-bootstrapped) file may already exist from
+      # this test run's own app start, but its *contents* must be untouched
+      # by anything this test does.
+      before_contents = File.read(real_path)
+
+      workspace = workspace_fixture()
+      assert %Maestro.Workspaces.Workspace{} = workspace
+      assert File.dir?(workspace.root_dir)
+
+      assert File.read(real_path) == before_contents
+    end
+  end
+
+  describe "create/2, list/0, get/1, delete/1" do
+    test "create registers a workspace with the five subdirectories" do
+      root_dir = Path.join(System.tmp_dir!(), "wtest_#{System.unique_integer([:positive])}")
+      {:ok, workspace} = Maestro.Workspaces.create("My Workspace", root_dir)
+
+      assert workspace.id == "my-workspace"
+      assert workspace.root_dir == Path.expand(root_dir)
+
+      for subdir <- ~w(suites scenarios datasets templates test_plans) do
+        assert File.dir?(Path.join(root_dir, subdir))
+      end
+
+      assert {:ok, ^workspace} = Maestro.Workspaces.get(workspace.id)
+      assert workspace in Maestro.Workspaces.list()
+
+      assert :ok = Maestro.Workspaces.delete(workspace.id)
+      assert Maestro.Workspaces.get(workspace.id) == {:error, :not_found}
+      assert File.dir?(root_dir), "delete/1 must not remove the directory itself"
+    end
+
+    test "two workspaces with the same name get deduplicated ids" do
+      root_a = Path.join(System.tmp_dir!(), "wtest_a_#{System.unique_integer([:positive])}")
+      root_b = Path.join(System.tmp_dir!(), "wtest_b_#{System.unique_integer([:positive])}")
+
+      {:ok, a} = Maestro.Workspaces.create("Same Name", root_a)
+      {:ok, b} = Maestro.Workspaces.create("Same Name", root_b)
+
+      assert a.id != b.id
+    end
+
+    test "rejects a relative root_dir" do
+      assert {:error, {:invalid_root_dir, :not_absolute}} =
+               Maestro.Workspaces.create("Bad", "relative/path")
+    end
+
+    test "delete/1 of an unknown id is {:error, :not_found}" do
+      assert Maestro.Workspaces.delete("does-not-exist") == {:error, :not_found}
+    end
+  end
+
+  describe "registry persistence across a Store reload" do
+    test "a created workspace survives a reload from the same path" do
+      root_dir =
+        Path.join(System.tmp_dir!(), "wtest_persist_#{System.unique_integer([:positive])}")
+
+      {:ok, workspace} = Maestro.Workspaces.create("Persisted", root_dir)
+
+      path = Maestro.Workspaces.Store.registry_path()
+      :ok = Maestro.Workspaces.Store.reload(path)
+
+      assert {:ok, ^workspace} = Maestro.Workspaces.get(workspace.id)
+    end
+  end
+
+  describe "a malformed registry file" do
+    test "invalid JSON: Store starts empty instead of crashing, file is left untouched" do
+      path =
+        Path.join(System.tmp_dir!(), "wtest_malformed_#{System.unique_integer([:positive])}.json")
+
+      File.write!(path, "{not valid json")
+
+      assert :ok = Maestro.Workspaces.Store.reload(path)
+      assert Maestro.Workspaces.list() == []
+      assert File.read!(path) == "{not valid json"
+    end
+
+    test "valid JSON, wrong shape: Store starts empty instead of crashing" do
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "wtest_wrongshape_#{System.unique_integer([:positive])}.json"
+        )
+
+      File.write!(path, Jason.encode!(%{"not_workspaces" => []}))
+
+      assert :ok = Maestro.Workspaces.Store.reload(path)
+      assert Maestro.Workspaces.list() == []
+    end
+
+    test "a workspace entry missing a required field: Store starts empty instead of crashing" do
+      path =
+        Path.join(System.tmp_dir!(), "wtest_badentry_#{System.unique_integer([:positive])}.json")
+
+      File.write!(path, Jason.encode!(%{"workspaces" => [%{"id" => "no-name-or-root-dir"}]}))
+
+      assert :ok = Maestro.Workspaces.Store.reload(path)
+      assert Maestro.Workspaces.list() == []
+    end
+  end
+end

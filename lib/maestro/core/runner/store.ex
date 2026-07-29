@@ -18,6 +18,7 @@ defmodule Maestro.Core.Runner.Store do
   use GenServer
 
   @table :maestro_runs
+  @workspace_table :maestro_runs_workspace
 
   @spec start_link(keyword) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -27,10 +28,23 @@ defmodule Maestro.Core.Runner.Store do
   @doc """
   Creates a run's row: `status: :running`, one `:pending` placeholder per
   already-resolved suite, in the same order as `resolved_suites`.
+  `workspace_id` is stored on the row (not part of `t:Maestro.run_result/0`
+  itself, `status/1`/`result/1` don't expose it) so a caller that already
+  has a `run_id` (e.g. a LiveView showing `/workspace/:workspace_id/runs/:run_id`)
+  can confirm the run actually belongs to that workspace before displaying it.
   """
-  @spec create(Maestro.run_id(), [Maestro.suite()]) :: :ok
-  def create(run_id, resolved_suites) do
-    GenServer.call(__MODULE__, {:create, run_id, resolved_suites})
+  @spec create(Maestro.run_id(), String.t(), [Maestro.suite()]) :: :ok
+  def create(run_id, workspace_id, resolved_suites) do
+    GenServer.call(__MODULE__, {:create, run_id, workspace_id, resolved_suites})
+  end
+
+  @doc "The `workspace_id` a run was created under, if the run exists."
+  @spec workspace_id(Maestro.run_id()) :: {:ok, String.t()} | :error
+  def workspace_id(run_id) do
+    case :ets.lookup(@workspace_table, run_id) do
+      [{^run_id, workspace_id}] -> {:ok, workspace_id}
+      [] -> :error
+    end
   end
 
   @doc "Flips one suite's placeholder to `:running`."
@@ -72,15 +86,18 @@ defmodule Maestro.Core.Runner.Store do
   @impl true
   def init(:ok) do
     :ets.new(@table, [:set, :protected, :named_table, read_concurrency: true])
+    :ets.new(@workspace_table, [:set, :protected, :named_table, read_concurrency: true])
     {:ok, %{}}
   end
 
   @impl true
-  def handle_call({:create, run_id, resolved_suites}, _from, state) do
+  def handle_call({:create, run_id, workspace_id, resolved_suites}, _from, state) do
     suites =
       Enum.map(resolved_suites, fn suite ->
         %{id: suite.id, status: :pending, testcases: []}
       end)
+
+    :ets.insert(@workspace_table, {run_id, workspace_id})
 
     run_result = %{run_id: run_id, status: :running, suites: suites}
     :ets.insert(@table, {run_id, run_result})

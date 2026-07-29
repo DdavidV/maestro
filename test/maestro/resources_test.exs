@@ -1,45 +1,16 @@
 defmodule Maestro.ResourcesTest do
   use ExUnit.Case, async: false
 
-  import Maestro.TestUtils
+  import Maestro.WorkspaceFixtures
   alias Maestro.Resources
 
   setup do
-    dir =
-      Path.join(System.tmp_dir!(), "maestro_registry_test_#{System.unique_integer([:positive])}")
-
-    File.mkdir_p!(dir)
-
-    previous = Application.get_env(:maestro, :resource_dir)
-    Application.put_env(:maestro, :resource_dir, dir)
-
-    on_exit(fn ->
-      File.rm_rf!(dir)
-
-      if previous do
-        Application.put_env(:maestro, :resource_dir, previous)
-      else
-        Application.delete_env(:maestro, :resource_dir)
-      end
-    end)
-
-    %{dir: dir}
+    :ok = isolate_workspace_registry!()
+    %{workspace: workspace_fixture()}
   end
 
-  describe "resource_dir/0" do
-    test "reads config :maestro, :resource_dir", %{dir: dir} do
-      assert Resources.resource_dir() == dir
-    end
-
-    test "falls back to priv/resources under Maestro's priv_dir when unset" do
-      Application.delete_env(:maestro, :resource_dir)
-      expected = Path.join(:code.priv_dir(:maestro), "resources")
-      assert Resources.resource_dir() == expected
-    end
-  end
-
-  describe "fetch/2" do
-    test "returns {:ok, data} for a valid suite" do
+  describe "fetch/3" do
+    test "returns {:ok, data} for a valid suite", %{workspace: workspace} do
       suite = %{
         "id" => "checkout-flow",
         "testcases" => [
@@ -57,72 +28,169 @@ defmodule Maestro.ResourcesTest do
         ]
       }
 
-      write_resource!("suites", "checkout_flow", suite)
+      resource_fixture!(workspace, :suite, "checkout_flow", suite)
 
-      assert {:ok, data} = Resources.fetch(:suite, "checkout_flow")
+      assert {:ok, data} = Resources.fetch(workspace, :suite, "checkout_flow")
       assert data["testcases"] |> hd() |> Map.fetch!("name") == "Add to cart"
     end
 
-    test "resolves nested subdirectories" do
+    test "resolves nested subdirectories", %{workspace: workspace} do
       dataset = %{"data" => %{"username" => "alice"}}
-      write_resource!("datasets", "checkout/seeded_users", dataset)
+      resource_fixture!(workspace, :dataset, "checkout/seeded_users", dataset)
 
-      assert {:ok, data} = Resources.fetch(:dataset, "checkout/seeded_users")
+      assert {:ok, data} = Resources.fetch(workspace, :dataset, "checkout/seeded_users")
       assert data["data"]["username"] == "alice"
     end
 
-    test "returns {:error, :not_found} for a missing file", %{dir: dir} do
-      assert Resources.fetch(:suite, "does_not_exist") == {:error, :not_found}
-      refute File.exists?(Path.join([dir, "suites", "does_not_exist.json"]))
+    test "returns {:error, :not_found} for a missing file", %{workspace: workspace} do
+      assert Resources.fetch(workspace, :suite, "does_not_exist") == {:error, :not_found}
+      refute File.exists?(Path.join([workspace.root_dir, "suites", "does_not_exist.json"]))
     end
 
-    test "returns {:error, :not_found} for unreadable/undecodable JSON", %{dir: dir} do
-      file = Path.join([dir, "templates", "broken.json"])
+    test "returns {:error, :not_found} for unreadable/undecodable JSON", %{workspace: workspace} do
+      file = Path.join([workspace.root_dir, "templates", "broken.json"])
       File.mkdir_p!(Path.dirname(file))
       File.write!(file, "{not valid json")
 
-      assert Resources.fetch(:template, "broken") == {:error, :not_found}
+      assert Resources.fetch(workspace, :template, "broken") == {:error, :not_found}
     end
 
-    test "returns {:error, :not_found} when the path points at a directory", %{dir: dir} do
-      dir_as_file = Path.join([dir, "scenarios", "oops.json"])
+    test "returns {:error, :not_found} when the path points at a directory", %{
+      workspace: workspace
+    } do
+      dir_as_file = Path.join([workspace.root_dir, "scenarios", "oops.json"])
       File.mkdir_p!(dir_as_file)
 
-      assert Resources.fetch(:scenario, "oops") == {:error, :not_found}
+      assert Resources.fetch(workspace, :scenario, "oops") == {:error, :not_found}
     end
 
-    test "returns {:error, {:invalid, reasons}} for a schema-invalid file" do
-      write_resource!("datasets", "empty", %{})
+    test "returns {:error, {:invalid, reasons}} for a schema-invalid file", %{
+      workspace: workspace
+    } do
+      raw_resource_fixture!(workspace, :dataset, "empty", %{})
 
-      assert {:error, {:invalid, reasons}} = Resources.fetch(:dataset, "empty")
+      assert {:error, {:invalid, reasons}} = Resources.fetch(workspace, :dataset, "empty")
       assert is_list(reasons)
       assert reasons != []
     end
 
-    test "rejects paths that escape resource_dir via ..", %{dir: dir} do
-      outside = Path.join(dir, "..")
+    test "rejects paths that escape workspace.root_dir via ..", %{workspace: workspace} do
+      outside = Path.join(workspace.root_dir, "..")
       escapee = Path.join(outside, "escapee.json")
       File.write!(escapee, Jason.encode!(%{"data" => %{"a" => 1}}))
 
       on_exit(fn -> File.rm(escapee) end)
 
-      assert Resources.fetch(:dataset, "../escapee") == {:error, :not_found}
+      assert Resources.fetch(workspace, :dataset, "../escapee") == {:error, :not_found}
     end
 
-    test "returns {:ok, data} for a valid test_plan" do
+    test "returns {:ok, data} for a valid test_plan", %{workspace: workspace} do
       test_plan = %{"id" => "nightly", "test_suites" => ["checkout/smoke"]}
-      write_resource!("test_plans", "nightly", test_plan)
+      resource_fixture!(workspace, :test_plan, "nightly", test_plan)
 
-      assert {:ok, data} = Resources.fetch(:test_plan, "nightly")
+      assert {:ok, data} = Resources.fetch(workspace, :test_plan, "nightly")
       assert data["test_suites"] == ["checkout/smoke"]
     end
 
-    test "an edit to a file takes effect on the next fetch, no reload needed" do
-      write_resource!("templates", "greeting", %{"clients" => ["http"], "payload" => %{"a" => 1}})
-      assert {:ok, %{"payload" => %{"a" => 1}}} = Resources.fetch(:template, "greeting")
+    test "an edit to a file takes effect on the next fetch, no reload needed", %{
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :template, "greeting", %{
+        "clients" => ["http"],
+        "payload" => %{"a" => 1}
+      })
 
-      write_resource!("templates", "greeting", %{"clients" => ["http"], "payload" => %{"a" => 2}})
-      assert {:ok, %{"payload" => %{"a" => 2}}} = Resources.fetch(:template, "greeting")
+      assert {:ok, %{"payload" => %{"a" => 1}}} =
+               Resources.fetch(workspace, :template, "greeting")
+
+      resource_fixture!(workspace, :template, "greeting", %{
+        "clients" => ["http"],
+        "payload" => %{"a" => 2}
+      })
+
+      assert {:ok, %{"payload" => %{"a" => 2}}} =
+               Resources.fetch(workspace, :template, "greeting")
+    end
+  end
+
+  describe "list/2" do
+    test "lists every resource of a kind, with name/description/tags parsed", %{
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :dataset, "seeded_users", %{
+        "name" => "Seeded Users",
+        "description" => "All seeded users",
+        "data" => %{"username" => "alice"}
+      })
+
+      resource_fixture!(workspace, :dataset, "checkout/other", %{"data" => %{"a" => 1}})
+
+      entries = Resources.list(workspace, :dataset)
+      assert length(entries) == 2
+
+      seeded = Enum.find(entries, &(&1.path == "seeded_users"))
+      assert seeded.name == "Seeded Users"
+      assert seeded.description == "All seeded users"
+      assert seeded.tags == []
+
+      other = Enum.find(entries, &(&1.path == "checkout/other"))
+      assert other.name == nil
+    end
+
+    test "returns [] for a kind with no files at all", %{workspace: workspace} do
+      assert Resources.list(workspace, :suite) == []
+    end
+
+    test "skips a file that fails to parse/validate rather than raising", %{workspace: workspace} do
+      raw_resource_fixture!(workspace, :dataset, "broken", %{})
+      resource_fixture!(workspace, :dataset, "fine", %{"data" => %{"a" => 1}})
+
+      entries = Resources.list(workspace, :dataset)
+      assert Enum.map(entries, & &1.path) == ["fine"]
+    end
+  end
+
+  describe "write/4" do
+    test "writes valid data, immediately re-fetchable", %{workspace: workspace} do
+      dataset = %{"data" => %{"a" => 1}}
+      assert :ok = Resources.write(workspace, :dataset, "new_dataset", dataset)
+      assert {:ok, ^dataset} = Resources.fetch(workspace, :dataset, "new_dataset")
+    end
+
+    test "creates nested subdirectories as needed", %{workspace: workspace} do
+      dataset = %{"data" => %{"a" => 1}}
+      assert :ok = Resources.write(workspace, :dataset, "nested/deep/dataset", dataset)
+      assert {:ok, ^dataset} = Resources.fetch(workspace, :dataset, "nested/deep/dataset")
+    end
+
+    test "rejects schema-invalid data before touching disk", %{workspace: workspace} do
+      assert {:error, {:invalid, reasons}} = Resources.write(workspace, :dataset, "bad", %{})
+      assert reasons != []
+      refute File.exists?(Path.join([workspace.root_dir, "datasets", "bad.json"]))
+    end
+
+    test "an invalid write does not clobber an existing valid file at the same path", %{
+      workspace: workspace
+    } do
+      original = %{"data" => %{"a" => 1}}
+      :ok = Resources.write(workspace, :dataset, "existing", original)
+
+      assert {:error, {:invalid, _reasons}} =
+               Resources.write(workspace, :dataset, "existing", %{})
+
+      assert {:ok, ^original} = Resources.fetch(workspace, :dataset, "existing")
+    end
+  end
+
+  describe "delete/3" do
+    test "deletes an existing resource", %{workspace: workspace} do
+      resource_fixture!(workspace, :dataset, "to_delete", %{"data" => %{"a" => 1}})
+      assert :ok = Resources.delete(workspace, :dataset, "to_delete")
+      assert Resources.fetch(workspace, :dataset, "to_delete") == {:error, :not_found}
+    end
+
+    test "{:error, :not_found} for a resource that doesn't exist", %{workspace: workspace} do
+      assert Resources.delete(workspace, :dataset, "does_not_exist") == {:error, :not_found}
     end
   end
 end

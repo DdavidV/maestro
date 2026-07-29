@@ -71,31 +71,32 @@ defmodule Maestro.Core.Runner do
   alias Maestro.Report
   alias Maestro.Resources
   alias Maestro.Resources.Resolver
+  alias Maestro.Workspaces.Workspace
 
   @task_supervisor Maestro.Core.Runner.TaskSupervisor
 
-  @spec run([Maestro.suite_entry()]) ::
+  @spec run(Workspace.t(), [Maestro.suite_entry()]) ::
           {:ok, Maestro.run_id()} | {:error, :invalid_entries | [{non_neg_integer, term}]}
-  def run(entries) when is_list(entries) do
-    case resolve_all(entries) do
-      {:ok, resolved_suites} -> start_run(resolved_suites)
+  def run(%Workspace{} = workspace, entries) when is_list(entries) do
+    case resolve_all(workspace, entries) do
+      {:ok, resolved_suites} -> start_run(workspace, resolved_suites)
       {:error, resolve_errors} -> {:error, resolve_errors}
     end
   end
 
-  def run(_entries), do: {:error, :invalid_entries}
+  def run(%Workspace{}, _entries), do: {:error, :invalid_entries}
 
   @doc """
-  Fetches the named test plan and runs its `test_suites` exactly as if that
-  list had been passed to `run/1` directly.
+  Fetches the named test plan (within `workspace`) and runs its
+  `test_suites` exactly as if that list had been passed to `run/2` directly.
   """
-  @spec run_test_plan(String.t()) ::
+  @spec run_test_plan(Workspace.t(), String.t()) ::
           {:ok, Maestro.run_id()}
           | {:error,
              {:test_plan_not_found, String.t()} | :invalid_entries | [{non_neg_integer, term}]}
-  def run_test_plan(name) do
-    case Resources.fetch(:test_plan, name) do
-      {:ok, %{"test_suites" => test_suites}} -> run(test_suites)
+  def run_test_plan(%Workspace{} = workspace, name) do
+    case Resources.fetch(workspace, :test_plan, name) do
+      {:ok, %{"test_suites" => test_suites}} -> run(workspace, test_suites)
       {:error, _reason} -> {:error, {:test_plan_not_found, name}}
     end
   end
@@ -152,11 +153,11 @@ defmodule Maestro.Core.Runner do
     end
   end
 
-  defp resolve_all(entries) do
+  defp resolve_all(workspace, entries) do
     results =
       entries
       |> Enum.with_index()
-      |> Enum.map(fn {entry, index} -> {index, Resolver.resolve(entry)} end)
+      |> Enum.map(fn {entry, index} -> {index, Resolver.resolve(workspace, entry)} end)
 
     errors = for {index, {:error, reason}} <- results, do: {index, reason}
 
@@ -167,9 +168,9 @@ defmodule Maestro.Core.Runner do
     end
   end
 
-  defp start_run(resolved_suites) do
+  defp start_run(workspace, resolved_suites) do
     run_id = generate_run_id()
-    :ok = Store.create(run_id, resolved_suites)
+    :ok = Store.create(run_id, workspace.id, resolved_suites)
 
     {:ok, _pid} =
       Task.Supervisor.start_child(@task_supervisor, fn -> execute_run(run_id, resolved_suites) end)

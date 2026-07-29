@@ -1,6 +1,8 @@
 defmodule Maestro.ReportTest do
   use ExUnit.Case, async: false
 
+  import Maestro.WorkspaceFixtures
+
   alias Maestro.Core.Runner
   alias Maestro.Report
 
@@ -13,11 +15,7 @@ defmodule Maestro.ReportTest do
   end
 
   setup do
-    resource_dir =
-      Path.join(
-        System.tmp_dir!(),
-        "maestro_report_test_res_#{System.unique_integer([:positive])}"
-      )
+    :ok = isolate_workspace_registry!()
 
     report_dir =
       Path.join(
@@ -25,22 +23,11 @@ defmodule Maestro.ReportTest do
         "maestro_report_test_out_#{System.unique_integer([:positive])}"
       )
 
-    File.mkdir_p!(resource_dir)
-
-    previous_resource_dir = Application.get_env(:maestro, :resource_dir)
     previous_report_dir = Application.get_env(:maestro, :report_dir)
-    Application.put_env(:maestro, :resource_dir, resource_dir)
     Application.put_env(:maestro, :report_dir, report_dir)
 
     on_exit(fn ->
-      File.rm_rf!(resource_dir)
       File.rm_rf!(report_dir)
-
-      if previous_resource_dir do
-        Application.put_env(:maestro, :resource_dir, previous_resource_dir)
-      else
-        Application.delete_env(:maestro, :resource_dir)
-      end
 
       if previous_report_dir do
         Application.put_env(:maestro, :report_dir, previous_report_dir)
@@ -49,7 +36,7 @@ defmodule Maestro.ReportTest do
       end
     end)
 
-    %{resource_dir: resource_dir, report_dir: report_dir}
+    %{workspace: workspace_fixture(), report_dir: report_dir}
   end
 
   defp inline_suite(id) do
@@ -86,8 +73,10 @@ defmodule Maestro.ReportTest do
       assert Report.render("does_not_exist") == {:error, :not_found}
     end
 
-    test "returns {:ok, html} containing the run's suite ids on a completed run" do
-      assert {:ok, run_id} = Runner.run([inline_suite("checkout")])
+    test "returns {:ok, html} containing the run's suite ids on a completed run", %{
+      workspace: workspace
+    } do
+      assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
       wait_until_done(run_id)
 
       assert {:ok, html} = Report.render(run_id)
@@ -95,8 +84,8 @@ defmodule Maestro.ReportTest do
       assert html =~ run_id
     end
 
-    test "an explicit layout argument overrides the configured default" do
-      assert {:ok, run_id} = Runner.run([inline_suite("checkout")])
+    test "an explicit layout argument overrides the configured default", %{workspace: workspace} do
+      assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
       wait_until_done(run_id)
 
       assert Report.render(run_id, DummyLayout) == {:ok, "dummy layout output"}
@@ -109,11 +98,12 @@ defmodule Maestro.ReportTest do
     end
 
     test "writes a file to report_path/1, creating report_dir if missing", %{
-      report_dir: report_dir
+      report_dir: report_dir,
+      workspace: workspace
     } do
       refute File.exists?(report_dir)
 
-      assert {:ok, run_id} = Runner.run([inline_suite("checkout")])
+      assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
       wait_until_done(run_id)
 
       assert Report.generate(run_id) == :ok
@@ -123,16 +113,18 @@ defmodule Maestro.ReportTest do
       assert File.read!(path) =~ "checkout"
     end
 
-    test "an explicit layout argument is used for the written file" do
-      assert {:ok, run_id} = Runner.run([inline_suite("checkout")])
+    test "an explicit layout argument is used for the written file", %{workspace: workspace} do
+      assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
       wait_until_done(run_id)
 
       assert Report.generate(run_id, DummyLayout) == :ok
       assert File.read!(Report.report_path(run_id)) == "dummy layout output"
     end
 
-    test "returns {:error, {:write_failed, _}} when report_dir can't be created" do
-      assert {:ok, run_id} = Runner.run([inline_suite("checkout")])
+    test "returns {:error, {:write_failed, _}} when report_dir can't be created", %{
+      workspace: workspace
+    } do
+      assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
       wait_until_done(run_id)
 
       # Point report_dir at a path whose parent is a file, not a directory,

@@ -1,32 +1,15 @@
 defmodule Maestro.ResolverTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
-  import Maestro.TestUtils
+  import Maestro.WorkspaceFixtures
   alias Maestro.Resources.Resolver
 
   setup do
-    dir =
-      Path.join(System.tmp_dir!(), "maestro_registry_test_#{System.unique_integer([:positive])}")
-
-    File.mkdir_p!(dir)
-
-    previous = Application.get_env(:maestro, :resource_dir)
-    Application.put_env(:maestro, :resource_dir, dir)
-
-    on_exit(fn ->
-      File.rm_rf!(dir)
-
-      if previous do
-        Application.put_env(:maestro, :resource_dir, previous)
-      else
-        Application.delete_env(:maestro, :resource_dir)
-      end
-    end)
-
-    %{dir: dir}
+    :ok = isolate_workspace_registry!()
+    %{workspace: workspace_fixture()}
   end
 
-  test "resolve suite reference with steps only" do
+  test "resolve suite reference with steps only", %{workspace: workspace} do
     suite = %{
       "id" => "my-suite",
       "testcases" => [
@@ -44,11 +27,14 @@ defmodule Maestro.ResolverTest do
       ]
     }
 
-    write_resource!("suites", "my_suite", suite)
+    resource_fixture!(workspace, :suite, "my_suite", suite)
 
-    write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+    resource_fixture!(workspace, :template, "my_template", %{
+      "clients" => ["http"],
+      "payload" => %{"a" => 1}
+    })
 
-    write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+    resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
 
     assert {:ok,
             %{
@@ -64,11 +50,12 @@ defmodule Maestro.ResolverTest do
                   ]
                 }
               ]
-            }} = Resolver.resolve("my_suite")
+            }} = Resolver.resolve(workspace, "my_suite")
   end
 
   describe "assertion atomization" do
-    test "a template-step's assert entries atomize matcher/path/expected, expected stays as given" do
+    test "a template-step's assert entries atomize matcher/path/expected, expected stays as given",
+         %{workspace: workspace} do
       suite = %{
         "id" => "my-suite",
         "testcases" => [
@@ -89,14 +76,14 @@ defmodule Maestro.ResolverTest do
         ]
       }
 
-      write_resource!("suites", "my_suite", suite)
+      resource_fixture!(workspace, :suite, "my_suite", suite)
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+      resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
 
       assert {:ok,
               %{
@@ -109,10 +96,10 @@ defmodule Maestro.ResolverTest do
                     ]
                   }
                 ]
-              }} = Resolver.resolve("my_suite")
+              }} = Resolver.resolve(workspace, "my_suite")
     end
 
-    test "an assert entry without a matcher defaults to json_match" do
+    test "an assert entry without a matcher defaults to json_match", %{workspace: workspace} do
       suite = %{
         "id" => "my-suite",
         "testcases" => [
@@ -131,24 +118,26 @@ defmodule Maestro.ResolverTest do
         ]
       }
 
-      write_resource!("suites", "my_suite", suite)
+      resource_fixture!(workspace, :suite, "my_suite", suite)
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+      resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
 
       assert {:ok,
               %{
                 testcases: [
                   %{steps: [%{assert: [%{matcher: "json_match", expected: 42}]}]}
                 ]
-              }} = Resolver.resolve("my_suite")
+              }} = Resolver.resolve(workspace, "my_suite")
     end
 
-    test "matcher-specific extra fields beyond matcher/path/expected stay string-keyed" do
+    test "matcher-specific extra fields beyond matcher/path/expected stay string-keyed", %{
+      workspace: workspace
+    } do
       suite = %{
         "id" => "my-suite",
         "testcases" => [
@@ -169,17 +158,17 @@ defmodule Maestro.ResolverTest do
         ]
       }
 
-      write_resource!("suites", "my_suite", suite)
+      resource_fixture!(workspace, :suite, "my_suite", suite)
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+      resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
 
       assert {:ok, %{testcases: [%{steps: [%{assert: [assertion]}]}]}} =
-               Resolver.resolve("my_suite")
+               Resolver.resolve(workspace, "my_suite")
 
       assert assertion == %{
                :matcher => "db",
@@ -188,7 +177,8 @@ defmodule Maestro.ResolverTest do
              }
     end
 
-    test "a scenario-call step rejects an assert field of its own only its nested steps can have one" do
+    test "a scenario-call step rejects an assert field of its own only its nested steps can have one",
+         %{workspace: workspace} do
       suite = %{
         "id" => "my-suite",
         "testcases" => [
@@ -206,24 +196,24 @@ defmodule Maestro.ResolverTest do
         ]
       }
 
-      write_resource!("suites", "my_suite", suite)
+      raw_resource_fixture!(workspace, :suite, "my_suite", suite)
 
-      write_resource!("scenarios", "my_scenario", %{
+      resource_fixture!(workspace, :scenario, "my_scenario", %{
         "steps" => [%{"client" => "http", "template" => "my_template"}]
       })
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+      resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
 
-      assert {:error, {:invalid, _reasons}} = Resolver.resolve("my_suite")
+      assert {:error, {:invalid, _reasons}} = Resolver.resolve(workspace, "my_suite")
     end
   end
 
-  test "resolve suite reference with scenario" do
+  test "resolve suite reference with scenario", %{workspace: workspace} do
     suite = %{
       "id" => "my-suite",
       "testcases" => [
@@ -240,7 +230,7 @@ defmodule Maestro.ResolverTest do
       ]
     }
 
-    write_resource!("suites", "my_suite", suite)
+    resource_fixture!(workspace, :suite, "my_suite", suite)
 
     scenario = %{
       "steps" => [
@@ -251,11 +241,14 @@ defmodule Maestro.ResolverTest do
       ]
     }
 
-    write_resource!("scenarios", "my_scenario", scenario)
+    resource_fixture!(workspace, :scenario, "my_scenario", scenario)
 
-    write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+    resource_fixture!(workspace, :template, "my_template", %{
+      "clients" => ["http"],
+      "payload" => %{"a" => 1}
+    })
 
-    write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+    resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
 
     assert {:ok,
             %{
@@ -283,10 +276,12 @@ defmodule Maestro.ResolverTest do
                   ]
                 }
               ]
-            }} = Resolver.resolve("my_suite")
+            }} = Resolver.resolve(workspace, "my_suite")
   end
 
-  test "broadcasts default_dataset's data over the caller's rows, caller's fields winning" do
+  test "broadcasts default_dataset's data over the caller's rows, caller's fields winning", %{
+    workspace: workspace
+  } do
     suite = %{
       "id" => "my-suite",
       "testcases" => [
@@ -300,16 +295,19 @@ defmodule Maestro.ResolverTest do
       ]
     }
 
-    write_resource!("suites", "my_suite", suite)
+    resource_fixture!(workspace, :suite, "my_suite", suite)
 
-    write_resource!("scenarios", "my_scenario", %{
+    resource_fixture!(workspace, :scenario, "my_scenario", %{
       "default_dataset" => %{"data" => %{"password" => "default-pw"}},
       "steps" => [%{"client" => "http", "template" => "my_template"}]
     })
 
-    write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+    resource_fixture!(workspace, :template, "my_template", %{
+      "clients" => ["http"],
+      "payload" => %{"a" => 1}
+    })
 
-    write_resource!("datasets", "seeded_users", %{
+    resource_fixture!(workspace, :dataset, "seeded_users", %{
       "rows" => [
         %{"username" => "alice"},
         %{"username" => "bob", "password" => "bobs-own-pw"}
@@ -332,10 +330,12 @@ defmodule Maestro.ResolverTest do
                   ]
                 }
               ]
-            }} = Resolver.resolve("my_suite")
+            }} = Resolver.resolve(workspace, "my_suite")
   end
 
-  test "rejects a scenario call where both default_dataset and the caller's dataset have rows" do
+  test "rejects a scenario call where both default_dataset and the caller's dataset have rows", %{
+    workspace: workspace
+  } do
     suite = %{
       "id" => "my-suite",
       "testcases" => [
@@ -349,22 +349,26 @@ defmodule Maestro.ResolverTest do
       ]
     }
 
-    write_resource!("suites", "my_suite", suite)
+    resource_fixture!(workspace, :suite, "my_suite", suite)
 
-    write_resource!("scenarios", "my_scenario", %{
+    resource_fixture!(workspace, :scenario, "my_scenario", %{
       "default_dataset" => %{"rows" => [%{"username" => "alice"}]},
       "steps" => [%{"client" => "http", "template" => "my_template"}]
     })
 
-    write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+    resource_fixture!(workspace, :template, "my_template", %{
+      "clients" => ["http"],
+      "payload" => %{"a" => 1}
+    })
 
-    write_resource!("datasets", "caller_rows", %{"rows" => [%{"username" => "bob"}]})
+    resource_fixture!(workspace, :dataset, "caller_rows", %{"rows" => [%{"username" => "bob"}]})
 
     assert {:error, %{reason: :ambiguous_dataset_merge, path: [_ | _]}} =
-             Resolver.resolve("my_suite")
+             Resolver.resolve(workspace, "my_suite")
   end
 
-  test "errors when a scenario call has no dataset, no inherited dataset, and no default_dataset" do
+  test "errors when a scenario call has no dataset, no inherited dataset, and no default_dataset",
+       %{workspace: workspace} do
     suite = %{
       "id" => "my-suite",
       "testcases" => [
@@ -376,15 +380,19 @@ defmodule Maestro.ResolverTest do
       ]
     }
 
-    write_resource!("suites", "my_suite", suite)
+    resource_fixture!(workspace, :suite, "my_suite", suite)
 
-    write_resource!("scenarios", "my_scenario", %{
+    resource_fixture!(workspace, :scenario, "my_scenario", %{
       "steps" => [%{"client" => "http", "template" => "my_template"}]
     })
 
-    write_resource!("templates", "my_template", %{"clients" => ["http"], "payload" => %{"a" => 1}})
+    resource_fixture!(workspace, :template, "my_template", %{
+      "clients" => ["http"],
+      "payload" => %{"a" => 1}
+    })
 
-    assert {:error, %{reason: :no_dataset, path: [_ | _]}} = Resolver.resolve("my_suite")
+    assert {:error, %{reason: :no_dataset, path: [_ | _]}} =
+             Resolver.resolve(workspace, "my_suite")
   end
 
   describe "fold_datasets/1" do
@@ -457,8 +465,8 @@ defmodule Maestro.ResolverTest do
   end
 
   describe "scenario recursion guards" do
-    test "rejects a scenario that calls itself" do
-      write_resource!("suites", "my_suite", %{
+    test "rejects a scenario that calls itself", %{workspace: workspace} do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -469,13 +477,13 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("scenarios", "self_referential", %{
+      resource_fixture!(workspace, :scenario, "self_referential", %{
         "steps" => [%{"scenario" => "self_referential"}]
       })
 
-      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+      resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
 
-      assert {:error, %{path: path, reason: reason}} = Resolver.resolve("my_suite")
+      assert {:error, %{path: path, reason: reason}} = Resolver.resolve(workspace, "my_suite")
 
       assert reason ==
                {:cycle_detected, "self_referential", ["self_referential", "self_referential"]}
@@ -483,8 +491,8 @@ defmodule Maestro.ResolverTest do
       assert List.last(path) == %{ref_kind: :scenario, ref_name: "self_referential"}
     end
 
-    test "rejects an indirect cycle across two scenarios" do
-      write_resource!("suites", "my_suite", %{
+    test "rejects an indirect cycle across two scenarios", %{workspace: workspace} do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -495,19 +503,25 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("scenarios", "scenario_a", %{"steps" => [%{"scenario" => "scenario_b"}]})
-      write_resource!("scenarios", "scenario_b", %{"steps" => [%{"scenario" => "scenario_a"}]})
-      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+      resource_fixture!(workspace, :scenario, "scenario_a", %{
+        "steps" => [%{"scenario" => "scenario_b"}]
+      })
 
-      assert {:error, %{path: path, reason: reason}} = Resolver.resolve("my_suite")
+      resource_fixture!(workspace, :scenario, "scenario_b", %{
+        "steps" => [%{"scenario" => "scenario_a"}]
+      })
+
+      resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
+
+      assert {:error, %{path: path, reason: reason}} = Resolver.resolve(workspace, "my_suite")
       assert reason == {:cycle_detected, "scenario_a", ["scenario_a", "scenario_b", "scenario_a"]}
       assert List.last(path) == %{ref_kind: :scenario, ref_name: "scenario_a"}
     end
 
-    test "a deep but acyclic scenario chain hits the max depth guard" do
+    test "a deep but acyclic scenario chain hits the max depth guard", %{workspace: workspace} do
       chain_length = Resolver.max_scenario_depth() + 1
 
-      write_resource!("suites", "my_suite", %{
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -518,7 +532,7 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+      resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
 
       for n <- 0..(chain_length - 1) do
         next_step =
@@ -528,10 +542,10 @@ defmodule Maestro.ResolverTest do
             %{"scenario" => "scenario_#{n + 1}"}
           end
 
-        write_resource!("scenarios", "scenario_#{n}", %{"steps" => [next_step]})
+        resource_fixture!(workspace, :scenario, "scenario_#{n}", %{"steps" => [next_step]})
       end
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
@@ -539,15 +553,15 @@ defmodule Maestro.ResolverTest do
       max_depth = Resolver.max_scenario_depth()
 
       assert {:error, %{path: path, reason: {:max_depth_exceeded, ^max_depth}}} =
-               Resolver.resolve("my_suite")
+               Resolver.resolve(workspace, "my_suite")
 
       assert List.last(path) == %{ref_kind: :scenario, ref_name: "scenario_#{max_depth}"}
     end
 
-    test "a scenario chain within the depth limit resolves normally" do
+    test "a scenario chain within the depth limit resolves normally", %{workspace: workspace} do
       chain_length = 10
 
-      write_resource!("suites", "my_suite", %{
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -558,7 +572,7 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+      resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
 
       for n <- 0..(chain_length - 1) do
         next_step =
@@ -568,21 +582,23 @@ defmodule Maestro.ResolverTest do
             %{"scenario" => "scenario_#{n + 1}"}
           end
 
-        write_resource!("scenarios", "scenario_#{n}", %{"steps" => [next_step]})
+        resource_fixture!(workspace, :scenario, "scenario_#{n}", %{"steps" => [next_step]})
       end
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      assert {:ok, _resolved} = Resolver.resolve("my_suite")
+      assert {:ok, _resolved} = Resolver.resolve(workspace, "my_suite")
     end
   end
 
   describe "error path pinpointing" do
-    test "a missing template reference names the testcase, step, and template" do
-      write_resource!("suites", "my_suite", %{
+    test "a missing template reference names the testcase, step, and template", %{
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -600,7 +616,7 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      assert {:error, %{path: path, reason: :not_found}} = Resolver.resolve("my_suite")
+      assert {:error, %{path: path, reason: :not_found}} = Resolver.resolve(workspace, "my_suite")
 
       assert path == [
                %{testcase_index: 0, testcase_name: "Add to cart"},
@@ -609,8 +625,10 @@ defmodule Maestro.ResolverTest do
              ]
     end
 
-    test "a missing dataset reference inside a scenario call names the whole chain" do
-      write_resource!("suites", "my_suite", %{
+    test "a missing dataset reference inside a scenario call names the whole chain", %{
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -621,16 +639,16 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("scenarios", "my_scenario", %{
+      resource_fixture!(workspace, :scenario, "my_scenario", %{
         "steps" => [%{"client" => "http", "template" => "my_template"}]
       })
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      assert {:error, %{path: path, reason: :not_found}} = Resolver.resolve("my_suite")
+      assert {:error, %{path: path, reason: :not_found}} = Resolver.resolve(workspace, "my_suite")
 
       assert path == [
                %{testcase_index: 0, testcase_name: "testcase 1"},
@@ -639,8 +657,10 @@ defmodule Maestro.ResolverTest do
              ]
     end
 
-    test "a schema-invalid dataset file surfaces {:invalid, reasons} at the right path" do
-      write_resource!("suites", "my_suite", %{
+    test "a schema-invalid dataset file surfaces {:invalid, reasons} at the right path", %{
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -653,14 +673,16 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      write_resource!("datasets", "broken_dataset", %{})
+      raw_resource_fixture!(workspace, :dataset, "broken_dataset", %{})
 
-      assert {:error, %{path: path, reason: {:invalid, reasons}}} = Resolver.resolve("my_suite")
+      assert {:error, %{path: path, reason: {:invalid, reasons}}} =
+               Resolver.resolve(workspace, "my_suite")
+
       assert is_list(reasons)
 
       assert path == [
@@ -672,8 +694,8 @@ defmodule Maestro.ResolverTest do
   end
 
   describe "inline template and scenario" do
-    test "an inline template needs no file at all" do
-      write_resource!("suites", "my_suite", %{
+    test "an inline template needs no file at all", %{workspace: workspace} do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -706,11 +728,12 @@ defmodule Maestro.ResolverTest do
                     ]
                   }
                 ]
-              }} = Resolver.resolve("my_suite")
+              }} = Resolver.resolve(workspace, "my_suite")
     end
 
-    test "an inline scenario needs no file at all, and its inline nested template resolves too" do
-      write_resource!("suites", "my_suite", %{
+    test "an inline scenario needs no file at all, and its inline nested template resolves too",
+         %{workspace: workspace} do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -757,11 +780,13 @@ defmodule Maestro.ResolverTest do
                     ]
                   }
                 ]
-              }} = Resolver.resolve("my_suite")
+              }} = Resolver.resolve(workspace, "my_suite")
     end
 
-    test "a named scenario calling an inline scenario still resolves, with no false cycle" do
-      write_resource!("suites", "my_suite", %{
+    test "a named scenario calling an inline scenario still resolves, with no false cycle", %{
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -772,7 +797,7 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("scenarios", "outer", %{
+      resource_fixture!(workspace, :scenario, "outer", %{
         "steps" => [
           %{
             "scenario" => %{
@@ -782,18 +807,20 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      write_resource!("datasets", "my_dataset", %{"data" => %{"foo" => "bar"}})
+      resource_fixture!(workspace, :dataset, "my_dataset", %{"data" => %{"foo" => "bar"}})
 
-      assert {:ok, _resolved} = Resolver.resolve("my_suite")
+      assert {:ok, _resolved} = Resolver.resolve(workspace, "my_suite")
     end
 
-    test "an inline scenario referencing a missing named template still pinpoints the path" do
-      write_resource!("suites", "my_suite", %{
+    test "an inline scenario referencing a missing named template still pinpoints the path", %{
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -811,7 +838,7 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      assert {:error, %{path: path, reason: :not_found}} = Resolver.resolve("my_suite")
+      assert {:error, %{path: path, reason: :not_found}} = Resolver.resolve(workspace, "my_suite")
 
       assert path == [
                %{testcase_index: 0, testcase_name: "testcase 1"},
@@ -821,7 +848,7 @@ defmodule Maestro.ResolverTest do
              ]
     end
 
-    test "deeply nested inline scenarios still hit the max depth guard" do
+    test "deeply nested inline scenarios still hit the max depth guard", %{workspace: workspace} do
       chain_length = Resolver.max_scenario_depth() + 1
 
       inline_chain =
@@ -833,7 +860,7 @@ defmodule Maestro.ResolverTest do
           end
         )
 
-      write_resource!("suites", "my_suite", %{
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -844,18 +871,19 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      assert {:error, %{reason: {:max_depth_exceeded, _max_depth}}} = Resolver.resolve("my_suite")
+      assert {:error, %{reason: {:max_depth_exceeded, _max_depth}}} =
+               Resolver.resolve(workspace, "my_suite")
     end
   end
 
   describe "testcase id uniqueness" do
-    test "rejects a suite with duplicate testcase ids" do
-      write_resource!("suites", "my_suite", %{
+    test "rejects a suite with duplicate testcase ids", %{workspace: workspace} do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -883,16 +911,17 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      assert Resolver.resolve("my_suite") == {:error, {:duplicate_testcase_id, "dup", [0, 1]}}
+      assert Resolver.resolve(workspace, "my_suite") ==
+               {:error, {:duplicate_testcase_id, "dup", [0, 1]}}
     end
 
-    test "accepts a suite where every testcase has a distinct id" do
-      write_resource!("suites", "my_suite", %{
+    test "accepts a suite where every testcase has a distinct id", %{workspace: workspace} do
+      resource_fixture!(workspace, :suite, "my_suite", %{
         "id" => "my-suite",
         "testcases" => [
           %{
@@ -920,12 +949,12 @@ defmodule Maestro.ResolverTest do
         ]
       })
 
-      write_resource!("templates", "my_template", %{
+      resource_fixture!(workspace, :template, "my_template", %{
         "clients" => ["http"],
         "payload" => %{"a" => 1}
       })
 
-      assert {:ok, _resolved} = Resolver.resolve("my_suite")
+      assert {:ok, _resolved} = Resolver.resolve(workspace, "my_suite")
     end
   end
 end

@@ -48,19 +48,30 @@ defmodule Maestro.Assert.Registry do
   """
   @spec fetch(String.t()) :: {:ok, module} | {:error, reason}
   def fetch(name) when is_binary(name) do
-    matchers =
-      case :persistent_term.get(@persistent_term_key, :not_loaded) do
-        :not_loaded ->
-          :ok = load!()
-          :persistent_term.get(@persistent_term_key)
-
-        matchers ->
-          matchers
-      end
+    matchers = load_or_get()
 
     case Map.fetch(matchers, name) do
       {:ok, module} -> {:ok, module}
       :error -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Every registered matcher name, e.g. for a UI picker/dropdown.
+
+  Triggers `load!/0` on first use, same as `fetch/1`.
+  """
+  @spec names() :: [String.t()]
+  def names, do: load_or_get() |> Map.keys()
+
+  defp load_or_get do
+    case :persistent_term.get(@persistent_term_key, :not_loaded) do
+      :not_loaded ->
+        :ok = load!()
+        :persistent_term.get(@persistent_term_key)
+
+      matchers ->
+        matchers
     end
   end
 
