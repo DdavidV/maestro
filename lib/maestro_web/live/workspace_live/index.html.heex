@@ -1,0 +1,39 @@
+<Layouts.app flash={@flash}>
+  <.header>
+    Workspaces
+    <:subtitle>Pick a workspace to browse, or register a new one.</:subtitle>
+  </.header>
+
+  <div class="mb-8">
+    <.table id="workspaces" rows={@workspaces}>
+      <:col :let={workspace} label="Name">
+        <.link navigate={~p"/workspace/#{workspace.id}"} class="link link-hover font-semibold">
+          {workspace.name}
+        </.link>
+      </:col>
+      <:col :let={workspace} label="Root dir">{workspace.root_dir}</:col>
+      <:col :let={workspace} label="Created">{workspace.created_at}</:col>
+      <:action :let={workspace}>
+        <.button
+          phx-click="delete"
+          phx-value-id={workspace.id}
+          data-confirm="Close this workspace? Its files are left on disk."
+        >
+          Close
+        </.button>
+      </:action>
+    </.table>
+
+    <p :if={@workspaces == []} class="text-base-content/70">
+      No workspaces yet create one below.
+    </p>
+  </div>
+
+  <.header>New workspace</.header>
+
+  <.form for={@form} phx-submit="create" class="flex flex-col gap-2 max-w-md">
+    <.input field={@form[:name]} label="Name" required />
+    <.input field={@form[:root_dir]} label="Root directory (absolute path)" required />
+    <.button variant="primary" class="mt-2">Create workspace</.button>
+  </.form>
+</Layouts.app>

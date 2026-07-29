@@ -81,6 +81,7 @@ defmodule MaestroWeb do
       import Phoenix.HTML
       # Core UI components
       import MaestroWeb.CoreComponents
+      import MaestroWeb.ResourceComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

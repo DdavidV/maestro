@@ -18,7 +18,19 @@ defmodule MaestroWeb.Router do
   scope "/", MaestroWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    get "/", RedirectController, :workspaces
+
+    live_session :workspaces_index do
+      live "/workspaces", WorkspaceLive.Index, :index
+    end
+
+    live_session :workspace, on_mount: MaestroWeb.WorkspaceOnMount do
+      scope "/workspace/:workspace_id" do
+        live "/", WorkspaceLive.Explorer, :dashboard
+        live "/:kind", WorkspaceLive.Explorer, :index
+        live "/:kind/*path", WorkspaceLive.Explorer, :show
+      end
+    end
   end
 
   scope "/" do

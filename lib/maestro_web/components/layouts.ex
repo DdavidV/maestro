@@ -31,42 +31,43 @@ defmodule MaestroWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
 
+  attr :workspace, :any,
+    default: nil,
+    doc: "the current `Maestro.Workspaces.Workspace.t()`, if any page is workspace-scoped"
+
   slot :inner_block, required: true
+  slot :drawer, doc: "the workspace drawer, rendered left of the main content when present"
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
+    <header class="navbar shrink-0 px-4 sm:px-6 lg:px-8 border-b border-base-300">
+      <div class="flex-1 flex items-center gap-6">
+        <a href="/" class="flex w-fit items-center gap-2">
           <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
+          <span class="text-sm font-semibold">Maestro</span>
         </a>
       </div>
       <div class="flex-none">
         <ul class="flex flex-column px-1 space-x-4 items-center">
           <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
+            <.link navigate="/workspaces" class="btn btn-ghost btn-sm">Workspaces</.link>
           </li>
           <li>
             <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://phoenix.hexdocs.pm/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
           </li>
         </ul>
       </div>
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
-        {render_slot(@inner_block)}
-      </div>
-    </main>
+    <div class="flex-1 min-h-0 flex">
+      {render_slot(@drawer)}
+
+      <main class="flex-1 min-h-0 overflow-y-auto px-4 py-10 sm:px-6 lg:px-8">
+        <div class="mx-auto max-w-5xl space-y-4">
+          {render_slot(@inner_block)}
+        </div>
+      </main>
+    </div>
 
     <.flash_group flash={@flash} />
     """
