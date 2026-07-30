@@ -371,7 +371,7 @@ defmodule MaestroWeb.CoreComponents do
       end
 
     ~H"""
-    <table class="table table-zebra">
+    <table class="table table-zebra table-pin-rows">
       <thead>
         <tr>
           <th :for={col <- @col}>{col[:label]}</th>

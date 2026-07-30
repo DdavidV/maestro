@@ -7,6 +7,16 @@
     />
   </:drawer>
 
+  <:breadcrumbs>
+    <.resource_breadcrumbs
+      workspace={@workspace}
+      kind={@kind}
+      segment={@segment}
+      path={@path}
+      live_action={@live_action}
+    />
+  </:breadcrumbs>
+
   <.header>
     {@page_title}
     <:actions>

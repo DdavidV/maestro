@@ -66,6 +66,7 @@ defmodule Maestro.Core.Runner do
 
   require Logger
 
+  alias Maestro.Core.Runner.Broadcaster
   alias Maestro.Core.Runner.Store
   alias Maestro.Core.Runner.Suite
   alias Maestro.Report
@@ -100,6 +101,48 @@ defmodule Maestro.Core.Runner do
       {:error, _reason} -> {:error, {:test_plan_not_found, name}}
     end
   end
+
+  @doc """
+  The `workspace_id` a run was created under, if `run_id` exists lets a
+  caller that already has a `run_id` (e.g. a LiveView showing
+  `/workspace/:workspace_id/history/:run_id`) confirm the run actually
+  belongs to that workspace before displaying it.
+  """
+  @spec workspace_id(Maestro.run_id()) :: {:ok, String.t()} | {:error, :not_found}
+  def workspace_id(run_id) do
+    case Store.workspace_id(run_id) do
+      {:ok, workspace_id} -> {:ok, workspace_id}
+      :error -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Every run created under `workspace`, newest-first, as a lightweight
+  `t:Maestro.run_summary/0` (no suite/testcase/step detail — a run history
+  listing needs id/status/suite-count/started-at per row, not the full
+  tree `result/1` would return for every run at once).
+  """
+  @spec list_for_workspace(Workspace.t()) :: [Maestro.run_summary()]
+  def list_for_workspace(%Workspace{} = workspace) do
+    workspace.id
+    |> Store.list_for_workspace()
+    |> Enum.map(fn {run_id, started_at, run_result} ->
+      %{
+        run_id: run_id,
+        started_at: started_at,
+        status: run_result.status,
+        suite_count: length(run_result.suites)
+      }
+    end)
+  end
+
+  @doc "Removes one run from this workspace's history. Safe to call for an unknown `run_id`."
+  @spec delete(Maestro.run_id()) :: :ok
+  def delete(run_id), do: Store.delete(run_id)
+
+  @doc "Removes every run belonging to `workspace` from its history."
+  @spec clear_history(Workspace.t()) :: :ok
+  def clear_history(%Workspace{} = workspace), do: Store.clear_workspace(workspace.id)
 
   @spec status(Maestro.run_id()) :: {:ok, Maestro.run_progress()} | {:error, :not_found}
   def status(run_id) do
@@ -184,11 +227,19 @@ defmodule Maestro.Core.Runner do
     |> Enum.each(fn {suite, index} -> execute_suite(run_id, index, suite) end)
 
     Store.finalize(run_id)
+    broadcast_finalized(run_id)
     generate_report(run_id)
   rescue
     _exception ->
       Store.mark_crashed(run_id)
+      broadcast_finalized(run_id)
       generate_report(run_id)
+  end
+
+  defp broadcast_finalized(run_id) do
+    with {:ok, run_result} <- Store.get(run_id) do
+      Broadcaster.broadcast(run_id, {:run_finalized, run_result.status})
+    end
   end
 
   defp generate_report(run_id) do
@@ -210,7 +261,10 @@ defmodule Maestro.Core.Runner do
 
   defp execute_suite(run_id, index, suite) do
     Store.mark_running(run_id, index)
-    Store.put_suite_result(run_id, index, Suite.run(suite))
+    Broadcaster.broadcast(run_id, {:suite_started, suite.id})
+    suite_run_result = Suite.run(run_id, suite)
+    Store.put_suite_result(run_id, index, suite_run_result)
+    Broadcaster.broadcast(run_id, {:suite_result, suite_run_result})
   end
 
   defp generate_run_id do

@@ -31,8 +31,8 @@ maestro-*.tar
 # Ignore digested assets cache.
 /priv/static/cache_manifest.json
 
-# Runtime-generated workspace registry (see Maestro.Workspaces.Store).
 /priv/workspaces.json
+/priv/reports
 
 # In case you use Node.js/npm, you want to ignore these.
 npm-debug.log

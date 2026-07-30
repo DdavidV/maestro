@@ -42,6 +42,89 @@ defmodule MaestroWeb.ResourceComponents do
   end
 
   @doc """
+  Renders a breadcrumb trail: always starts with `workspace`'s own name
+  (linking back to its dashboard, `/workspace/:id`), followed by `crumbs`
+  a plain list of `{label, to_or_nil}` pairs, `to_or_nil` a navigate path
+  or `nil` for the current (unlinked) step, always the trail's last entry
+  in practice. Pass `crumbs={[]}` on the dashboard itself, so the
+  workspace name is the trail's only (and therefore unlinked, current)
+  entry there. The generic renderer every workspace-scoped page's own
+  breadcrumb trail (see `resource_breadcrumbs/1`, or a page's own crumb
+  list) ultimately builds against, so there's exactly one place the
+  workspace-name-always-first rule and its styling/markup live.
+  """
+  attr :workspace, :any, required: true
+  attr :crumbs, :list, required: true
+
+  def breadcrumbs(assigns) do
+    workspace_to = if assigns.crumbs == [], do: nil, else: "/workspace/#{assigns.workspace.id}"
+
+    assigns =
+      assign(assigns, :all_crumbs, [{assigns.workspace.name, workspace_to} | assigns.crumbs])
+
+    ~H"""
+    <div class="flex items-center flex-wrap gap-1.5 text-sm">
+      <.icon name="hero-map-pin" class="size-4 text-base-content/40 shrink-0" />
+      <%= for {{label, to}, index} <- Enum.with_index(@all_crumbs) do %>
+        <.icon
+          :if={index > 0}
+          name="hero-chevron-right"
+          class="size-3.5 text-base-content/40 shrink-0"
+        />
+        <.link :if={to} navigate={to} class="link link-hover font-mono">{label}</.link>
+        <span :if={!to} class="font-mono font-semibold text-base-content">{label}</span>
+      <% end %>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a breadcrumb trail for one resource kind's Index/Show/New/Edit
+  pages (e.g. "Suites > checkout/smoke > Edit"), each crumb but the last
+  a link back to that step. A nested path (`"checkout/smoke"`) is kept as
+  one crumb, not split per path segment there's no per-folder listing
+  page today for a "checkout" crumb to link to.
+  """
+  attr :workspace, :any, required: true
+  attr :kind, :atom, required: true
+  attr :segment, :string, required: true
+  attr :path, :string, default: nil
+  attr :live_action, :atom, required: true
+
+  def resource_breadcrumbs(assigns) do
+    assigns = assign(assigns, :crumbs, resource_breadcrumb_crumbs(assigns))
+
+    ~H"""
+    <.breadcrumbs workspace={@workspace} crumbs={@crumbs} />
+    """
+  end
+
+  defp resource_breadcrumb_crumbs(%{
+         workspace: workspace,
+         kind: kind,
+         segment: segment,
+         path: path,
+         live_action: live_action
+       }) do
+    index_path = "/workspace/#{workspace.id}/#{segment}"
+    label = kind_label(kind)
+
+    case live_action do
+      :index ->
+        [{label, nil}]
+
+      :show ->
+        [{label, index_path}, {path, nil}]
+
+      :new ->
+        [{label, index_path}, {"New", nil}]
+
+      :edit ->
+        [{label, index_path}, {path, "#{index_path}/#{path}"}, {"Edit", nil}]
+    end
+  end
+
+  @doc """
   Renders the workspace drawer (see `MaestroWeb.Components.WorkspaceDrawer`)
   for `workspace`, highlighting `current_kind`/`current_path` if given (a
   `Show` page's own kind/path) so the tree auto-expands to and highlights

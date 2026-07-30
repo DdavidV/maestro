@@ -24,13 +24,18 @@ defmodule MaestroWeb.Router do
       live "/workspaces", WorkspaceLive.Index, :index
     end
 
+    scope "/workspace/:workspace_id" do
+      get "/reports/:run_id/download", ReportController, :download
+    end
+
     live_session :workspace, on_mount: MaestroWeb.WorkspaceOnMount do
       scope "/workspace/:workspace_id" do
         live "/", WorkspaceLive.Explorer, :dashboard
+        live "/run", RunLive.New, :new
+        live "/history", RunLive.Index, :index
+        live "/history/:run_id", RunLive.Show, :show
+        live "/reports/:run_id", ReportLive.Show, :show
         live "/:kind", WorkspaceLive.Explorer, :index
-        # "new" and "edit" are reserved: a resource whose path is exactly
-        # "new"/"edit", or that starts with "edit/", is unreachable via its
-        # own show page since these routes are matched first.
         live "/:kind/new", WorkspaceLive.Form, :new
         live "/:kind/edit/*path", WorkspaceLive.Form, :edit
         live "/:kind/*path", WorkspaceLive.Explorer, :show

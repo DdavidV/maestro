@@ -30,18 +30,31 @@ defmodule Maestro.Report do
   alias Maestro.Report.Model
 
   @doc """
-  The directory reports are written under. Reads
+  The root directory reports are written under. Reads
   `config :maestro, :report_dir`, falling back to `priv/reports` under
-  Maestro's own `priv_dir` if unset.
+  Maestro's own `priv_dir` if unset. Each workspace gets its own
+  subdirectory under this root (see `report_path/1`) so a workspace with
+  many runs doesn't dump its reports into one shared directory alongside
+  every other workspace's.
   """
   @spec report_dir() :: String.t()
   def report_dir do
     Application.get_env(:maestro, :report_dir) || Path.join(:code.priv_dir(:maestro), "reports")
   end
 
-  @doc "The file a `generate/2` call for `run_id` writes (or overwrites)."
-  @spec report_path(Maestro.run_id()) :: String.t()
-  def report_path(run_id), do: Path.join(report_dir(), "maestro_report_#{run_id}.html")
+  @doc """
+  The file a `generate/2` call for `run_id` writes (or overwrites):
+  `report_dir()/<workspace_id>/maestro_report_<run_id>.html`. `{:error, :not_found}`
+  if `run_id` doesn't resolve to a known run (same convention as
+  `render/2`/`Runner.result/1`) there's no workspace to bucket under
+  otherwise.
+  """
+  @spec report_path(Maestro.run_id()) :: {:ok, String.t()} | {:error, :not_found}
+  def report_path(run_id) do
+    with {:ok, workspace_id} <- Runner.workspace_id(run_id) do
+      {:ok, Path.join([report_dir(), workspace_id, "maestro_report_#{run_id}.html"])}
+    end
+  end
 
   @doc """
   Renders `run_id`'s current result as a self-contained HTML string, via
@@ -84,8 +97,9 @@ defmodule Maestro.Report do
           :ok | {:error, :not_found | {:write_failed, term}}
   def generate(run_id, layout \\ Layout.configured()) do
     with {:ok, html} <- render(run_id, layout),
-         :ok <- File.mkdir_p(report_dir()),
-         :ok <- File.write(report_path(run_id), html) do
+         {:ok, path} <- report_path(run_id),
+         :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(path, html) do
       :ok
     else
       {:error, :not_found} -> {:error, :not_found}

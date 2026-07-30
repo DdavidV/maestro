@@ -3,6 +3,7 @@ defmodule Maestro.Core.RunnerTest do
 
   import Maestro.WorkspaceFixtures
   alias Maestro.Core.Runner
+  alias Maestro.Core.Runner.Broadcaster
 
   setup do
     :ok = isolate_workspace_registry!()
@@ -64,6 +65,86 @@ defmodule Maestro.Core.RunnerTest do
       assert %{status: :running, suites: [%{id: "slow_suite", status: :running}]} = progress
 
       wait_until_done(run_id)
+    end
+  end
+
+  describe "broadcasting" do
+    test "broadcasts suite/testcase/run-finalized messages, in order, for a multi-suite run", %{
+      workspace: workspace
+    } do
+      suites = [inline_suite("suite_a"), inline_suite("suite_b")]
+
+      {:ok, run_id} = Runner.run(workspace, suites)
+      :ok = Broadcaster.subscribe(run_id)
+
+      wait_until_done(run_id)
+
+      assert_received {:suite_started, "suite_a"}
+      assert_received {:testcase_result, "suite_a", %{id: "suite_a_tc1", status: :ok}}
+      assert_received {:suite_result, %{id: "suite_a", status: :ok}}
+      assert_received {:suite_started, "suite_b"}
+      assert_received {:testcase_result, "suite_b", %{id: "suite_b_tc1", status: :ok}}
+      assert_received {:suite_result, %{id: "suite_b", status: :ok}}
+      assert_received {:run_finalized, :ok}
+    end
+
+    test "broadcasts :run_finalized with :error when a testcase fails", %{workspace: workspace} do
+      suite =
+        inline_suite("failing_suite",
+          assert: [%{"matcher" => "json_match", "path" => "$.nope", "expected" => "x"}]
+        )
+
+      {:ok, run_id} = Runner.run(workspace, [suite])
+      :ok = Broadcaster.subscribe(run_id)
+
+      wait_until_done(run_id)
+
+      assert_received {:run_finalized, :error}
+    end
+  end
+
+  describe "run history" do
+    test "list_for_workspace/1 lists this workspace's runs, newest first, without other workspaces' runs",
+         %{workspace: workspace} do
+      other_workspace = workspace_fixture()
+
+      {:ok, run_id_1} = Runner.run(workspace, [inline_suite("first")])
+      wait_until_done(run_id_1)
+      {:ok, other_run_id} = Runner.run(other_workspace, [inline_suite("elsewhere")])
+      wait_until_done(other_run_id)
+      {:ok, run_id_2} = Runner.run(workspace, [inline_suite("second")])
+      wait_until_done(run_id_2)
+
+      summaries = Runner.list_for_workspace(workspace)
+
+      assert Enum.map(summaries, & &1.run_id) == [run_id_2, run_id_1]
+      assert Enum.all?(summaries, &(&1.status == :ok))
+      assert Enum.all?(summaries, &(&1.suite_count == 1))
+      assert Enum.all?(summaries, &match?(%DateTime{}, &1.started_at))
+    end
+
+    test "delete/1 removes a single run from history and from result/1", %{workspace: workspace} do
+      {:ok, run_id} = Runner.run(workspace, [inline_suite("a")])
+      wait_until_done(run_id)
+
+      :ok = Runner.delete(run_id)
+
+      assert Runner.list_for_workspace(workspace) == []
+      assert Runner.result(run_id) == {:error, :not_found}
+    end
+
+    test "clear_history/1 removes every run for this workspace only", %{workspace: workspace} do
+      other_workspace = workspace_fixture()
+
+      {:ok, run_id} = Runner.run(workspace, [inline_suite("a")])
+      wait_until_done(run_id)
+      {:ok, other_run_id} = Runner.run(other_workspace, [inline_suite("b")])
+      wait_until_done(other_run_id)
+
+      :ok = Runner.clear_history(workspace)
+
+      assert Runner.list_for_workspace(workspace) == []
+      assert length(Runner.list_for_workspace(other_workspace)) == 1
     end
   end
 
@@ -430,12 +511,17 @@ defmodule Maestro.Core.RunnerTest do
       %{report_dir: report_dir}
     end
 
+    defp report_path!(run_id) do
+      {:ok, path} = Maestro.Report.report_path(run_id)
+      path
+    end
+
     test "a report is written automatically after a passing run", %{workspace: workspace} do
       {:ok, run_id} = Runner.run(workspace, [inline_suite("s1")])
       final = wait_until_done(run_id)
 
       assert final.status == :ok
-      assert File.exists?(Maestro.Report.report_path(run_id))
+      assert File.exists?(report_path!(run_id))
     end
 
     test "a report is written automatically after a run that ends :error", %{workspace: workspace} do
@@ -444,7 +530,7 @@ defmodule Maestro.Core.RunnerTest do
       final = wait_until_done(run_id)
 
       assert final.status == :error
-      assert File.exists?(Maestro.Report.report_path(run_id))
+      assert File.exists?(report_path!(run_id))
     end
 
     test "auto_report: false suppresses generation", %{workspace: workspace} do
@@ -453,7 +539,7 @@ defmodule Maestro.Core.RunnerTest do
       {:ok, run_id} = Runner.run(workspace, [inline_suite("s1")])
       wait_until_done(run_id)
 
-      refute File.exists?(Maestro.Report.report_path(run_id))
+      refute File.exists?(report_path!(run_id))
     end
 
     test "a crashing custom report_layout does not crash the run or corrupt run status", %{
@@ -468,7 +554,7 @@ defmodule Maestro.Core.RunnerTest do
 
           assert final.status == :ok
           assert {:ok, %{status: :ok}} = Runner.result(run_id)
-          refute File.exists?(Maestro.Report.report_path(run_id))
+          refute File.exists?(report_path!(run_id))
         end)
 
       assert log =~ "Maestro report generation crashed"

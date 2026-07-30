@@ -1,0 +1,32 @@
+<Layouts.app flash={@flash} workspace={@workspace}>
+  <:drawer>
+    <.workspace_drawer workspace={@workspace} />
+  </:drawer>
+
+  <:breadcrumbs>
+    <.breadcrumbs
+      workspace={@workspace}
+      crumbs={[
+        {"History", "/workspace/#{@workspace.id}/history"},
+        {@run_id, nil}
+      ]}
+    />
+  </:breadcrumbs>
+
+  <.header>
+    Run <span class="font-mono">{@run_id}</span>
+    <:subtitle>{@workspace.name}</:subtitle>
+    <:actions>
+      <.status_badge status={@run_result.status} />
+      <.button navigate={"/workspace/#{@workspace.id}/reports/#{@run_id}"} variant="primary">
+        View report
+      </.button>
+    </:actions>
+  </.header>
+
+  <.suite_card :for={suite <- @run_result.suites} suite={suite} />
+
+  <p :if={@run_result.suites == []} class="text-base-content/70">
+    This run has no suites.
+  </p>
+</Layouts.app>

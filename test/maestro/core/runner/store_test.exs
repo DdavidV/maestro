@@ -85,6 +85,77 @@ defmodule Maestro.Core.Runner.StoreTest do
     end
   end
 
+  describe "list_for_workspace/1" do
+    test "lists every run for the given workspace, newest first" do
+      workspace_id = "workspace_#{System.unique_integer([:positive])}"
+      run_id_1 = "run_#{System.unique_integer([:positive])}"
+      :ok = Store.create(run_id_1, workspace_id, [suite("a")])
+      Process.sleep(5)
+      run_id_2 = "run_#{System.unique_integer([:positive])}"
+      :ok = Store.create(run_id_2, workspace_id, [suite("b")])
+
+      entries = Store.list_for_workspace(workspace_id)
+
+      assert Enum.map(entries, fn {run_id, _started_at, _result} -> run_id end) == [
+               run_id_2,
+               run_id_1
+             ]
+    end
+
+    test "excludes runs belonging to a different workspace" do
+      workspace_id = "workspace_#{System.unique_integer([:positive])}"
+      other_workspace_id = "workspace_#{System.unique_integer([:positive])}"
+      run_id = "run_#{System.unique_integer([:positive])}"
+      other_run_id = "run_#{System.unique_integer([:positive])}"
+
+      :ok = Store.create(run_id, workspace_id, [suite("a")])
+      :ok = Store.create(other_run_id, other_workspace_id, [suite("b")])
+
+      run_ids = Store.list_for_workspace(workspace_id) |> Enum.map(&elem(&1, 0))
+      assert run_ids == [run_id]
+    end
+
+    test "returns [] for a workspace with no runs" do
+      assert Store.list_for_workspace("workspace_with_no_runs_at_all") == []
+    end
+  end
+
+  describe "delete/1" do
+    test "removes a run from get/1, workspace_id/1, and list_for_workspace/1" do
+      workspace_id = "workspace_#{System.unique_integer([:positive])}"
+      run_id = "run_#{System.unique_integer([:positive])}"
+      :ok = Store.create(run_id, workspace_id, [suite("a")])
+
+      :ok = Store.delete(run_id)
+
+      assert Store.get(run_id) == :error
+      assert Store.workspace_id(run_id) == :error
+      assert Store.list_for_workspace(workspace_id) == []
+    end
+
+    test "is a no-op for an unknown run_id" do
+      assert Store.delete("does_not_exist_either") == :ok
+    end
+  end
+
+  describe "clear_workspace/1" do
+    test "removes every run for the given workspace, leaves other workspaces alone" do
+      workspace_id = "workspace_#{System.unique_integer([:positive])}"
+      other_workspace_id = "workspace_#{System.unique_integer([:positive])}"
+      run_id = "run_#{System.unique_integer([:positive])}"
+      other_run_id = "run_#{System.unique_integer([:positive])}"
+
+      :ok = Store.create(run_id, workspace_id, [suite("a")])
+      :ok = Store.create(other_run_id, other_workspace_id, [suite("b")])
+
+      :ok = Store.clear_workspace(workspace_id)
+
+      assert Store.list_for_workspace(workspace_id) == []
+      assert Store.get(run_id) == :error
+      assert Store.get(other_run_id) != :error
+    end
+  end
+
   describe "concurrent writers" do
     test "concurrent create/2 calls for different run_ids don't clobber each other" do
       tasks =

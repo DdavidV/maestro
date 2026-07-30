@@ -103,7 +103,7 @@ defmodule MaestroWeb.API.RunHandler do
   def create_run_report(conn, %{"run_id" => run_id}) do
     case Maestro.generate_report(run_id) do
       :ok ->
-        path = Path.join(Maestro.Report.report_dir(), "maestro_report_#{run_id}.html")
+        {:ok, path} = Maestro.Report.report_path(run_id)
         json(conn, 201, %{run_id: run_id, path: path})
 
       {:error, :not_found} ->

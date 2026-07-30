@@ -38,6 +38,9 @@ defmodule MaestroWeb.Layouts do
   slot :inner_block, required: true
   slot :drawer, doc: "the workspace drawer, rendered left of the main content when present"
 
+  slot :breadcrumbs,
+    doc: "an optional breadcrumb trail (e.g. <.breadcrumbs .../>), shown below the top navbar"
+
   def app(assigns) do
     ~H"""
     <header class="navbar shrink-0 px-4 sm:px-6 lg:px-8 border-b border-base-300">
@@ -49,6 +52,16 @@ defmodule MaestroWeb.Layouts do
       </div>
       <div class="flex-none">
         <ul class="flex flex-column px-1 space-x-4 items-center">
+          <li :if={@workspace}>
+            <.link navigate={"/workspace/#{@workspace.id}/run"} class="btn btn-ghost btn-sm">
+              Run
+            </.link>
+          </li>
+          <li :if={@workspace}>
+            <.link navigate={"/workspace/#{@workspace.id}/history"} class="btn btn-ghost btn-sm">
+              History
+            </.link>
+          </li>
           <li>
             <.link navigate="/workspaces" class="btn btn-ghost btn-sm">Workspaces</.link>
           </li>
@@ -58,6 +71,13 @@ defmodule MaestroWeb.Layouts do
         </ul>
       </div>
     </header>
+
+    <div
+      :if={@breadcrumbs != []}
+      class="shrink-0 px-4 sm:px-6 lg:px-8 py-2 border-b border-base-300 bg-base-200/50"
+    >
+      {render_slot(@breadcrumbs)}
+    </div>
 
     <div class="flex-1 min-h-0 flex">
       {render_slot(@drawer)}

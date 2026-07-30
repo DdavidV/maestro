@@ -150,6 +150,20 @@ defmodule Maestro do
         }
 
   @typedoc """
+  One row of a workspace's run history, as returned by
+  `Maestro.Core.Runner.list_for_workspace/1` — id, when it started, its
+  current aggregate status, and how many suites it covers, without any
+  suite/testcase/step detail (fetch `t:run_result/0` via `result/1` for that,
+  scoped to one `run_id` at a time).
+  """
+  @type run_summary :: %{
+          run_id: run_id(),
+          started_at: DateTime.t(),
+          status: run_status(),
+          suite_count: non_neg_integer
+        }
+
+  @typedoc """
   One suite's outcome within a run. `testcases` is `[]` until that suite
   starts executing.
   """
@@ -273,11 +287,11 @@ defmodule Maestro do
     do: Maestro.Report.render(run_id, layout)
 
   @doc """
-  Renders and writes `run_id`'s report to disk
-  (`Maestro.Report.report_dir/0`, `maestro_report_<run_id>.html`). Called
-  automatically after every `run/1`/`run_test_plan/1` completes, unless
-  disabled via `config :maestro, :auto_report, false`. See
-  `Maestro.Report.generate/2`.
+  Renders and writes `run_id`'s report to disk, under
+  `Maestro.Report.report_dir/0`'s per-workspace subdirectory (see
+  `Maestro.Report.report_path/1`). Called automatically after every
+  `run/1`/`run_test_plan/1` completes, unless disabled via
+  `config :maestro, :auto_report, false`. See `Maestro.Report.generate/2`.
   """
   @spec generate_report(run_id, module) ::
           :ok | {:error, :not_found | {:write_failed, term}}

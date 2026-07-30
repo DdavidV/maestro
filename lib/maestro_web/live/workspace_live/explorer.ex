@@ -1,6 +1,7 @@
 defmodule MaestroWeb.WorkspaceLive.Explorer do
   use MaestroWeb, :live_view
 
+  alias Maestro.Core.Runner
   alias Maestro.Resources
   alias MaestroWeb.ResourceComponents
 
@@ -115,6 +116,24 @@ defmodule MaestroWeb.WorkspaceLive.Explorer do
        to:
          "/workspace/#{workspace.id}/#{segment}?page=#{page}&query=#{URI.encode_www_form(query)}"
      )}
+  end
+
+  def handle_event("run", _params, socket) do
+    %{workspace: workspace, kind: kind, path: path} = socket.assigns
+
+    result =
+      case kind do
+        :suite -> Runner.run(workspace, [path])
+        :test_plan -> Runner.run_test_plan(workspace, path)
+      end
+
+    case result do
+      {:ok, run_id} ->
+        {:noreply, push_navigate(socket, to: "/workspace/#{workspace.id}/history/#{run_id}")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not start run: #{inspect(reason)}")}
+    end
   end
 
   def handle_event("delete", _params, socket) do

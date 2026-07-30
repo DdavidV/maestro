@@ -1,0 +1,52 @@
+<Layouts.app flash={@flash} workspace={@workspace}>
+  <:drawer>
+    <.workspace_drawer workspace={@workspace} />
+  </:drawer>
+
+  <:breadcrumbs>
+    <.breadcrumbs workspace={@workspace} crumbs={[{"History", nil}]} />
+  </:breadcrumbs>
+
+  <.header>
+    History
+    <:subtitle>{@workspace.name}</:subtitle>
+    <:actions>
+      <.button
+        :if={@runs != []}
+        phx-click="clear-history"
+        data-confirm="Clear this workspace's entire run history? This only forgets it here — it does not affect any files."
+      >
+        Clear history
+      </.button>
+    </:actions>
+  </.header>
+
+  <.table id="runs" rows={@runs} row_id={& &1.run_id}>
+    <:col :let={run} label="Run">
+      <.link
+        navigate={"/workspace/#{@workspace.id}/history/#{run.run_id}"}
+        class="link link-hover font-mono"
+      >
+        {run.run_id}
+      </.link>
+    </:col>
+    <:col :let={run} label="Status">
+      <.status_badge status={run.status} />
+    </:col>
+    <:col :let={run} label="Suites">{run.suite_count}</:col>
+    <:col :let={run} label="Started">{run.started_at}</:col>
+    <:action :let={run}>
+      <.button
+        phx-click="delete"
+        phx-value-run_id={run.run_id}
+        data-confirm={"Remove #{run.run_id} from history?"}
+      >
+        Remove
+      </.button>
+    </:action>
+  </.table>
+
+  <p :if={@runs == []} class="text-base-content/70">
+    No runs yet in this workspace's history.
+  </p>
+</Layouts.app>

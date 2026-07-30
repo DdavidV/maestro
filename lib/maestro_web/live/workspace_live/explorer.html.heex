@@ -7,6 +7,18 @@
     />
   </:drawer>
 
+  <:breadcrumbs>
+    <.breadcrumbs :if={@live_action == :dashboard} workspace={@workspace} crumbs={[]} />
+    <.resource_breadcrumbs
+      :if={@live_action in [:index, :show]}
+      workspace={@workspace}
+      kind={@kind}
+      segment={@segment}
+      path={@current_path}
+      live_action={@live_action}
+    />
+  </:breadcrumbs>
+
   <div :if={@live_action == :dashboard}>
     <.header>
       {@workspace.name}
@@ -25,7 +37,7 @@
     </div>
   </div>
 
-  <div :if={@live_action == :index}>
+  <div :if={@live_action == :index} class="flex flex-col" style="height: calc(100vh - 12rem)">
     <.header>
       {kind_label(@kind)}
       <:subtitle>{@workspace.name}</:subtitle>
@@ -36,7 +48,7 @@
       </:actions>
     </.header>
 
-    <form id="search-form" phx-change="search" class="mb-4 max-w-sm">
+    <form id="search-form" phx-change="search" class="mb-4 max-w-sm shrink-0">
       <input
         type="text"
         name="query"
@@ -47,25 +59,27 @@
       />
     </form>
 
-    <.table id={@segment} rows={@streams.entries} row_item={fn {_id, entry} -> entry end}>
-      <:col :let={entry} label="Path">
-        <.link
-          patch={"/workspace/#{@workspace.id}/#{@segment}/#{entry.path}"}
-          class="link link-hover font-mono"
-        >
-          {entry.path}
-        </.link>
-      </:col>
-      <:col :let={entry} label="Name">{entry.name}</:col>
-      <:col :let={entry} label="Description">{entry.description}</:col>
-      <:col :let={entry} :if={@kind == :suite} label="Tags">
-        <.kind_badge :for={tag <- entry.tags} label={tag} />
-      </:col>
-    </.table>
+    <div class="flex-1 min-h-0 overflow-y-auto">
+      <.table id={@segment} rows={@streams.entries} row_item={fn {_id, entry} -> entry end}>
+        <:col :let={entry} label="Path">
+          <.link
+            patch={"/workspace/#{@workspace.id}/#{@segment}/#{entry.path}"}
+            class="link link-hover font-mono"
+          >
+            {entry.path}
+          </.link>
+        </:col>
+        <:col :let={entry} label="Name">{entry.name}</:col>
+        <:col :let={entry} label="Description">{entry.description}</:col>
+        <:col :let={entry} :if={@kind == :suite} label="Tags">
+          <.kind_badge :for={tag <- entry.tags} label={tag} />
+        </:col>
+      </.table>
 
-    <p :if={@total == 0} class="text-base-content/70">No {kind_label(@kind)} found.</p>
+      <p :if={@total == 0} class="text-base-content/70">No {kind_label(@kind)} found.</p>
+    </div>
 
-    <div :if={@total > @page_size} class="flex items-center gap-2 mt-4">
+    <div :if={@total > @page_size} class="flex items-center gap-2 mt-4 shrink-0">
       <.button disabled={@page <= 1} phx-click="paginate" phx-value-page={@page - 1}>
         Previous
       </.button>
@@ -82,11 +96,14 @@
     </div>
   </div>
 
-  <div :if={@live_action == :show}>
+  <div :if={@live_action == :show} class="flex flex-col" style="height: calc(100vh - 12rem)">
     <.header>
       {@resource["name"] || @path}
       <:subtitle><span class="font-mono">{@path}</span></:subtitle>
       <:actions>
+        <.button :if={!@error && @kind in [:suite, :test_plan]} phx-click="run" variant="primary">
+          Run
+        </.button>
         <.button
           :if={!@error}
           patch={"/workspace/#{@workspace.id}/#{@segment}/edit/#{@path}"}
@@ -101,99 +118,102 @@
         >
           Delete
         </.button>
-        <.button patch={"/workspace/#{@workspace.id}/#{@segment}"}>
-          Back to {kind_label(@kind)}
-        </.button>
       </:actions>
     </.header>
 
-    <div :if={@error} class="alert alert-error">
-      Could not load this {@kind |> Atom.to_string() |> String.replace("_", " ")}: {inspect(
-        @error
-      )}
-    </div>
-
-    <div :if={@resource && @kind == :suite}>
-      <p :if={@resource["description"]} class="mb-4 text-base-content/70">
-        {@resource["description"]}
-      </p>
-
-      <div class="mb-4">
-        <.kind_badge :for={tag <- @resource["tags"] || []} label={tag} />
+    <div class="flex-1 min-h-0 overflow-y-auto">
+      <div :if={@error} class="alert alert-error">
+        Could not load this {@kind |> Atom.to_string() |> String.replace("_", " ")}: {inspect(
+          @error
+        )}
       </div>
 
-      <h3 class="font-semibold mb-2">Testcases</h3>
-      <div
-        :for={testcase <- @resource["testcases"]}
-        class="card bg-base-100 border border-base-300 p-4 mb-4"
-      >
-        <div class="font-semibold mb-1">{testcase["name"] || testcase["id"]}</div>
-        <div class="text-xs font-mono text-base-content/50 mb-2">{testcase["id"]}</div>
-        <p :if={testcase["description"]} class="text-sm text-base-content/70 mb-2">
-          {testcase["description"]}
+      <div :if={@resource && @kind == :suite}>
+        <p :if={@resource["description"]} class="mb-4 text-base-content/70">
+          {@resource["description"]}
         </p>
 
-        <.step_card :for={{step, i} <- Enum.with_index(testcase["steps"])} step={step} index={i} />
-      </div>
-    </div>
+        <div class="mb-4">
+          <.kind_badge :for={tag <- @resource["tags"] || []} label={tag} />
+        </div>
 
-    <div :if={@resource && @kind == :scenario}>
-      <p :if={@resource["description"]} class="mb-4 text-base-content/70">
-        {@resource["description"]}
-      </p>
+        <h3 class="font-semibold mb-2">Testcases</h3>
+        <div
+          :for={testcase <- @resource["testcases"]}
+          class="card bg-base-100 border border-base-300 p-4 mb-4"
+        >
+          <div class="font-semibold mb-1">{testcase["name"] || testcase["id"]}</div>
+          <div class="text-xs font-mono text-base-content/50 mb-2">{testcase["id"]}</div>
+          <p :if={testcase["description"]} class="text-sm text-base-content/70 mb-2">
+            {testcase["description"]}
+          </p>
 
-      <div :if={default_dataset = @resource["default_dataset"]} class="mb-4">
-        <h3 class="font-semibold mb-2">Default dataset</h3>
-        <span :if={is_binary(default_dataset)} class="font-mono">{default_dataset}</span>
-        <.dataset_body :if={is_map(default_dataset)} dataset={default_dataset} />
-      </div>
-
-      <h3 class="font-semibold mb-2">Steps</h3>
-      <.step_card :for={{step, i} <- Enum.with_index(@resource["steps"])} step={step} index={i} />
-    </div>
-
-    <div :if={@resource && @kind == :dataset}>
-      <p :if={@resource["description"]} class="mb-4 text-base-content/70">
-        {@resource["description"]}
-      </p>
-      <.dataset_body dataset={@resource} />
-    </div>
-
-    <div :if={@resource && @kind == :template}>
-      <p :if={@resource["description"]} class="mb-4 text-base-content/70">
-        {@resource["description"]}
-      </p>
-
-      <h3 class="font-semibold mb-1">Clients</h3>
-      <div class="mb-4">
-        <.kind_badge :for={client <- @resource["clients"] || []} label={client} />
+          <.step_card
+            :for={{step, i} <- Enum.with_index(testcase["steps"])}
+            step={step}
+            index={i}
+          />
+        </div>
       </div>
 
-      <h3 class="font-semibold mb-1">Payload</h3>
-      <pre class="bg-base-200 rounded p-3 text-sm overflow-x-auto mb-4">{Jason.encode!(@resource["payload"], pretty: true)}</pre>
+      <div :if={@resource && @kind == :scenario}>
+        <p :if={@resource["description"]} class="mb-4 text-base-content/70">
+          {@resource["description"]}
+        </p>
 
-      <div :if={@resource["options"]}>
-        <h3 class="font-semibold mb-1">Options</h3>
-        <pre class="bg-base-200 rounded p-3 text-sm overflow-x-auto">{Jason.encode!(@resource["options"], pretty: true)}</pre>
+        <div :if={default_dataset = @resource["default_dataset"]} class="mb-4">
+          <h3 class="font-semibold mb-2">Default dataset</h3>
+          <span :if={is_binary(default_dataset)} class="font-mono">{default_dataset}</span>
+          <.dataset_body :if={is_map(default_dataset)} dataset={default_dataset} />
+        </div>
+
+        <h3 class="font-semibold mb-2">Steps</h3>
+        <.step_card :for={{step, i} <- Enum.with_index(@resource["steps"])} step={step} index={i} />
       </div>
-    </div>
 
-    <div :if={@resource && @kind == :test_plan}>
-      <p :if={@resource["description"]} class="mb-4 text-base-content/70">
-        {@resource["description"]}
-      </p>
+      <div :if={@resource && @kind == :dataset}>
+        <p :if={@resource["description"]} class="mb-4 text-base-content/70">
+          {@resource["description"]}
+        </p>
+        <.dataset_body dataset={@resource} />
+      </div>
 
-      <h3 class="font-semibold mb-2">Suites</h3>
-      <ul class="list">
-        <li :for={suite_path <- @resource["test_suites"]} class="list-row">
-          <.link
-            patch={"/workspace/#{@workspace.id}/suites/#{suite_path}"}
-            class="link link-hover font-mono"
-          >
-            {suite_path}
-          </.link>
-        </li>
-      </ul>
+      <div :if={@resource && @kind == :template}>
+        <p :if={@resource["description"]} class="mb-4 text-base-content/70">
+          {@resource["description"]}
+        </p>
+
+        <h3 class="font-semibold mb-1">Clients</h3>
+        <div class="mb-4">
+          <.kind_badge :for={client <- @resource["clients"] || []} label={client} />
+        </div>
+
+        <h3 class="font-semibold mb-1">Payload</h3>
+        <pre class="bg-base-200 rounded p-3 text-sm overflow-x-auto mb-4">{Jason.encode!(@resource["payload"], pretty: true)}</pre>
+
+        <div :if={@resource["options"]}>
+          <h3 class="font-semibold mb-1">Options</h3>
+          <pre class="bg-base-200 rounded p-3 text-sm overflow-x-auto">{Jason.encode!(@resource["options"], pretty: true)}</pre>
+        </div>
+      </div>
+
+      <div :if={@resource && @kind == :test_plan}>
+        <p :if={@resource["description"]} class="mb-4 text-base-content/70">
+          {@resource["description"]}
+        </p>
+
+        <h3 class="font-semibold mb-2">Suites</h3>
+        <ul class="list">
+          <li :for={suite_path <- @resource["test_suites"]} class="list-row">
+            <.link
+              patch={"/workspace/#{@workspace.id}/suites/#{suite_path}"}
+              class="link link-hover font-mono"
+            >
+              {suite_path}
+            </.link>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </Layouts.app>

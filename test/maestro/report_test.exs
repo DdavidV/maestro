@@ -108,7 +108,7 @@ defmodule Maestro.ReportTest do
 
       assert Report.generate(run_id) == :ok
 
-      path = Report.report_path(run_id)
+      assert {:ok, path} = Report.report_path(run_id)
       assert File.exists?(path)
       assert File.read!(path) =~ "checkout"
     end
@@ -118,7 +118,42 @@ defmodule Maestro.ReportTest do
       wait_until_done(run_id)
 
       assert Report.generate(run_id, DummyLayout) == :ok
-      assert File.read!(Report.report_path(run_id)) == "dummy layout output"
+      assert {:ok, path} = Report.report_path(run_id)
+      assert File.read!(path) == "dummy layout output"
+    end
+
+    test "buckets the written file under a subdirectory named for the run's workspace", %{
+      report_dir: report_dir,
+      workspace: workspace
+    } do
+      assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
+      wait_until_done(run_id)
+
+      assert Report.generate(run_id) == :ok
+
+      assert {:ok, path} = Report.report_path(run_id)
+      assert path == Path.join([report_dir, workspace.id, "maestro_report_#{run_id}.html"])
+      assert File.exists?(path)
+    end
+
+    test "reports for two different workspaces land in separate subdirectories", %{
+      workspace: workspace
+    } do
+      other_workspace = workspace_fixture()
+
+      assert {:ok, run_id_1} = Runner.run(workspace, [inline_suite("checkout")])
+      wait_until_done(run_id_1)
+      assert {:ok, run_id_2} = Runner.run(other_workspace, [inline_suite("checkout")])
+      wait_until_done(run_id_2)
+
+      assert Report.generate(run_id_1) == :ok
+      assert Report.generate(run_id_2) == :ok
+
+      assert {:ok, path_1} = Report.report_path(run_id_1)
+      assert {:ok, path_2} = Report.report_path(run_id_2)
+      assert Path.dirname(path_1) != Path.dirname(path_2)
+      assert File.exists?(path_1)
+      assert File.exists?(path_2)
     end
 
     test "returns {:error, {:write_failed, _}} when report_dir can't be created", %{
