@@ -29,6 +29,11 @@
     <.header>
       {kind_label(@kind)}
       <:subtitle>{@workspace.name}</:subtitle>
+      <:actions>
+        <.button patch={"/workspace/#{@workspace.id}/#{@segment}/new"} variant="primary">
+          New {kind_label(@kind)}
+        </.button>
+      </:actions>
     </.header>
 
     <form id="search-form" phx-change="search" class="mb-4 max-w-sm">
@@ -36,13 +41,13 @@
         type="text"
         name="query"
         value={@query}
-        placeholder="Search by path, name, or tag..."
+        placeholder="Search by path..."
         class="input w-full"
         phx-debounce="200"
       />
     </form>
 
-    <.table id={@segment} rows={@filtered}>
+    <.table id={@segment} rows={@streams.entries} row_item={fn {_id, entry} -> entry end}>
       <:col :let={entry} label="Path">
         <.link
           patch={"/workspace/#{@workspace.id}/#{@segment}/#{entry.path}"}
@@ -58,7 +63,23 @@
       </:col>
     </.table>
 
-    <p :if={@filtered == []} class="text-base-content/70">No {kind_label(@kind)} found.</p>
+    <p :if={@total == 0} class="text-base-content/70">No {kind_label(@kind)} found.</p>
+
+    <div :if={@total > @page_size} class="flex items-center gap-2 mt-4">
+      <.button disabled={@page <= 1} phx-click="paginate" phx-value-page={@page - 1}>
+        Previous
+      </.button>
+      <span class="text-sm text-base-content/70">
+        Page {@page} of {ceil(@total / @page_size)} ({@total} total)
+      </span>
+      <.button
+        disabled={@page * @page_size >= @total}
+        phx-click="paginate"
+        phx-value-page={@page + 1}
+      >
+        Next
+      </.button>
+    </div>
   </div>
 
   <div :if={@live_action == :show}>
@@ -66,6 +87,20 @@
       {@resource["name"] || @path}
       <:subtitle><span class="font-mono">{@path}</span></:subtitle>
       <:actions>
+        <.button
+          :if={!@error}
+          patch={"/workspace/#{@workspace.id}/#{@segment}/edit/#{@path}"}
+          variant="primary"
+        >
+          Edit
+        </.button>
+        <.button
+          :if={!@error}
+          phx-click="delete"
+          data-confirm={"Delete #{@path}? This cannot be undone."}
+        >
+          Delete
+        </.button>
         <.button patch={"/workspace/#{@workspace.id}/#{@segment}"}>
           Back to {kind_label(@kind)}
         </.button>

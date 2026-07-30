@@ -81,6 +81,26 @@ defmodule Maestro.Resources do
   """
   @spec list(Workspace.t(), kind) :: [list_entry]
   def list(%Workspace{} = workspace, kind) when kind in @kinds do
+    workspace
+    |> list_paths(kind)
+    |> Enum.flat_map(fn path ->
+      case fetch(workspace, kind, path) do
+        {:ok, data} -> [to_list_entry(path, data)]
+        {:error, _reason} -> []
+      end
+    end)
+  end
+
+  @doc """
+  Every resource path of `kind` in `workspace`, sorted, without reading or
+  parsing any file content.
+
+  Cheap enough to call just to get a total count or a page of paths (e.g.
+  for the Explorer's index) without paying `list/2`'s per-entry parse cost
+  for resources that won't even be displayed on the current page.
+  """
+  @spec list_paths(Workspace.t(), kind) :: [path]
+  def list_paths(%Workspace{} = workspace, kind) when kind in @kinds do
     base = Path.join(Path.expand(workspace.root_dir), subdir(kind))
 
     base
@@ -88,12 +108,57 @@ defmodule Maestro.Resources do
     |> Enum.map(&Path.relative_to(&1, base))
     |> Enum.map(&String.replace_suffix(&1, ".json", ""))
     |> Enum.sort()
-    |> Enum.flat_map(fn path ->
-      case fetch(workspace, kind, path) do
-        {:ok, data} -> [to_list_entry(path, data)]
-        {:error, _reason} -> []
-      end
-    end)
+  end
+
+  @typedoc "One level of `list_dir/3`: immediate subfolder names and leaf entries, non-recursive."
+  @type dir_listing :: %{folders: [String.t()], entries: [list_entry]}
+
+  @doc """
+  The immediate contents of one directory of `kind` in `workspace`, one
+  level deep only (no recursion into subfolders), for lazily expanding a
+  file-tree UI one directory at a time instead of loading/parsing an
+  entire (possibly huge) kind up front.
+
+  `dir` is `""` for the kind's own root, or a path prefix (e.g.
+  `"checkout"`) for a subdirectory. Returns subfolder names (sorted, no
+  trailing slash) alongside this level's own leaf resources as
+  `list_entry`s (parsed, same shape as `list/2`'s entries) files that fail
+  to parse/validate are skipped, same as `list/2`.
+  """
+  @spec list_dir(Workspace.t(), kind, path) :: dir_listing
+  def list_dir(%Workspace{} = workspace, kind, dir) when kind in @kinds and is_binary(dir) do
+    base = Path.join(Path.expand(workspace.root_dir), subdir(kind))
+    full_dir = Path.expand(if dir == "", do: base, else: Path.join(base, dir))
+
+    if (full_dir == base or String.starts_with?(full_dir, base <> "/")) and File.dir?(full_dir) do
+      full_dir
+      |> File.ls!()
+      |> Enum.sort()
+      |> Enum.reduce(%{folders: [], entries: []}, fn name, acc ->
+        entry_path = Path.join(full_dir, name)
+
+        cond do
+          File.dir?(entry_path) ->
+            %{acc | folders: [name | acc.folders]}
+
+          String.ends_with?(name, ".json") ->
+            rel_path = Path.join(dir, String.replace_suffix(name, ".json", ""))
+
+            case fetch(workspace, kind, rel_path) do
+              {:ok, data} -> %{acc | entries: [to_list_entry(rel_path, data) | acc.entries]}
+              {:error, _reason} -> acc
+            end
+
+          true ->
+            acc
+        end
+      end)
+      |> then(fn %{folders: folders, entries: entries} ->
+        %{folders: Enum.reverse(folders), entries: Enum.reverse(entries)}
+      end)
+    else
+      %{folders: [], entries: []}
+    end
   end
 
   @doc """

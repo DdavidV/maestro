@@ -7,6 +7,8 @@ defmodule MaestroWeb.ResourceComponents do
 
   use Phoenix.Component
 
+  import MaestroWeb.CoreComponents
+
   @kinds [:suite, :scenario, :dataset, :template, :test_plan]
 
   @doc "Every resource kind's `{kind, plural_label, route_segment}`, in a stable display order."
@@ -58,6 +60,66 @@ defmodule MaestroWeb.ResourceComponents do
       current_kind={@current_kind}
       current_path={@current_path}
     />
+    """
+  end
+
+  @doc """
+  Renders a form field label with an optional tooltip icon sourced from
+  `Maestro.Resources.SchemaDocs.tooltip/2`, so form help text always
+  matches the JSON Schema's own `description` rather than a hand-written
+  (and easily stale) duplicate. Pure CSS/daisyUI `.tooltip` (hover-only,
+  no JS) renders nothing if `kind`/`field_path` has no `description`.
+
+  ## Examples
+
+      <.field_label kind={:dataset} field_path={["data"]}>Data</.field_label>
+  """
+  attr :kind, :atom, required: true
+  attr :field_path, :list, required: true
+  slot :inner_block, required: true
+
+  def field_label(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :tooltip,
+        Maestro.Resources.SchemaDocs.tooltip(assigns.kind, assigns.field_path)
+      )
+
+    ~H"""
+    <span class="label mb-1 gap-1">
+      {render_slot(@inner_block)}
+      <span :if={@tooltip} class="tooltip tooltip-right" data-tip={@tooltip}>
+        <.icon name="hero-question-mark-circle" class="size-3.5 text-base-content/50" />
+      </span>
+    </span>
+    """
+  end
+
+  @doc """
+  A `MaestroWeb.CoreComponents.input/1` whose label is `field_label/1`
+  (schema-tooltip-aware) instead of a plain string. Takes the same
+  `field`/`type`/etc. attrs as `<.input>`, plus `kind`/`field_path` to
+  look up the tooltip.
+
+  ## Examples
+
+      <.tooltip_input field={@form[:name]} kind={:dataset} field_path={["name"]} label="Name" />
+  """
+  attr :kind, :atom, required: true
+  attr :field_path, :list, required: true
+  attr :label, :string, required: true
+  attr :rest, :global
+
+  attr :field, Phoenix.HTML.FormField,
+    doc: "a form field struct retrieved from the form, for example: @form[:email]"
+
+  def tooltip_input(assigns) do
+    ~H"""
+    <div>
+      <.field_label kind={@kind} field_path={@field_path}>{@label}</.field_label>
+      <.input field={@field} {@rest} />
+    </div>
     """
   end
 

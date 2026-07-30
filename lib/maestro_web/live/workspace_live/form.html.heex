@@ -1,0 +1,92 @@
+<Layouts.app flash={@flash} workspace={@workspace}>
+  <:drawer>
+    <.workspace_drawer
+      workspace={@workspace}
+      current_kind={@current_kind}
+      current_path={@current_path}
+    />
+  </:drawer>
+
+  <.header>
+    {@page_title}
+    <:actions>
+      <.button patch={cancel_path(@workspace, @segment, @path)}>Cancel</.button>
+    </:actions>
+  </.header>
+
+  <div class={(@kind in [:suite, :scenario] && "max-w-4xl") || "max-w-2xl"}>
+    <form phx-submit="save">
+      <div class="fieldset mb-2">
+        <label for="resource-path">
+          <span class="label mb-1">Path</span>
+          <input
+            type="text"
+            id="resource-path"
+            name="path"
+            value={@path_input}
+            phx-change="update-path"
+            phx-debounce="200"
+            disabled={@live_action == :edit}
+            placeholder="e.g. checkout/smoke"
+            class={["w-full input", @path_error && "input-error"]}
+          />
+        </label>
+        <p :if={@path_error} class="mt-1.5 flex gap-2 items-center text-sm text-error">
+          <.icon name="hero-exclamation-circle" class="size-5" />{@path_error}
+        </p>
+      </div>
+
+      <div :if={@errors != []} class="alert alert-error mb-4">
+        <ul>
+          <li :for={{message, path} <- @errors}>
+            <span class="font-mono text-xs">{path}</span>: {message}
+          </li>
+        </ul>
+      </div>
+
+      <.top_level_fields :if={@kind in [:suite, :test_plan]} kind={@kind} data={@data} />
+      <.name_description_fields
+        :if={@kind in [:dataset, :scenario, :template]}
+        kind={@kind}
+        data={@data}
+      />
+
+      <.dataset_fields
+        :if={@kind == :dataset}
+        data={@data}
+        dataset_mode={@dataset_mode}
+        data_pairs={@data_pairs}
+        row_columns={@row_columns}
+        errors={@errors}
+      />
+      <.template_fields
+        :if={@kind == :template}
+        data={@data}
+        client_names={@client_names}
+        payload_raw={@payload_raw}
+        payload_error={@payload_error}
+        options_raw={@options_raw}
+        options_error={@options_error}
+      />
+      <.test_plan_fields :if={@kind == :test_plan} data={@data} suite_entries={@suite_entries} />
+      <.scenario_fields
+        :if={@kind == :scenario}
+        workspace={@workspace}
+        data={@data}
+        client_names={@client_names}
+        expected_raw={@expected_raw}
+        errors={@errors}
+      />
+      <.suite_fields
+        :if={@kind == :suite}
+        workspace={@workspace}
+        data={@data}
+        client_names={@client_names}
+        expected_raw={@expected_raw}
+        errors={@errors}
+      />
+
+      <.button type="submit" variant="primary" class="btn btn-primary mt-4">Save</.button>
+    </form>
+  </div>
+</Layouts.app>

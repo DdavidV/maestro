@@ -300,6 +300,11 @@ defmodule Maestro.SchemasTest do
       assert {:error, _errors} = Schemas.validate(:dataset, %{"name" => "empty"})
     end
 
+    test "rejects a dataset with both data and rows" do
+      dataset = %{"name" => "both", "data" => %{"a" => 1}, "rows" => [%{"a" => 1}]}
+      assert {:error, _errors} = Schemas.validate(:dataset, dataset)
+    end
+
     test "accepts a dataset without a name" do
       assert Schemas.validate(:dataset, %{"data" => %{"a" => 1}}) == :ok
     end

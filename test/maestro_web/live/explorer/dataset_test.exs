@@ -58,5 +58,24 @@ defmodule MaestroWeb.WorkspaceLive.Explorer.DatasetTest do
 
       assert html =~ "Could not load this dataset"
     end
+
+    test "deleting removes the file and navigates back to the index", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :dataset, "test_user", %{"data" => %{"username" => "alice"}})
+
+      {:ok, view, _html} = live(conn, ~p"/workspace/#{workspace.id}/datasets/test_user")
+
+      {:ok, index_live, html} =
+        view
+        |> element("button", "Delete")
+        |> render_click()
+        |> follow_redirect(conn)
+
+      assert html =~ "Deleted test_user."
+      refute has_element?(index_live, "tbody#datasets a", "test_user")
+      assert Maestro.Resources.fetch(workspace, :dataset, "test_user") == {:error, :not_found}
+    end
   end
 end

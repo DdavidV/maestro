@@ -150,6 +150,56 @@ defmodule Maestro.ResourcesTest do
     end
   end
 
+  describe "list_dir/3" do
+    test "lists only immediate children, not nested contents, of the root", %{
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :dataset, "top_level", %{"data" => %{"a" => 1}})
+      resource_fixture!(workspace, :dataset, "checkout/nested", %{"data" => %{"a" => 1}})
+
+      %{folders: folders, entries: entries} = Resources.list_dir(workspace, :dataset, "")
+
+      assert folders == ["checkout"]
+      assert Enum.map(entries, & &1.path) == ["top_level"]
+    end
+
+    test "lists a subdirectory's own contents when given a dir path", %{workspace: workspace} do
+      resource_fixture!(workspace, :dataset, "checkout/nested", %{"data" => %{"a" => 1}})
+
+      resource_fixture!(workspace, :dataset, "checkout/deeper/double_nested", %{
+        "data" => %{"a" => 1}
+      })
+
+      %{folders: folders, entries: entries} = Resources.list_dir(workspace, :dataset, "checkout")
+
+      assert folders == ["deeper"]
+      assert Enum.map(entries, & &1.path) == ["checkout/nested"]
+    end
+
+    test "returns empty folders/entries for a directory that doesn't exist", %{
+      workspace: workspace
+    } do
+      assert Resources.list_dir(workspace, :dataset, "does_not_exist") == %{
+               folders: [],
+               entries: []
+             }
+    end
+
+    test "skips a file that fails to parse/validate rather than raising", %{workspace: workspace} do
+      raw_resource_fixture!(workspace, :dataset, "broken", %{})
+      resource_fixture!(workspace, :dataset, "fine", %{"data" => %{"a" => 1}})
+
+      %{entries: entries} = Resources.list_dir(workspace, :dataset, "")
+      assert Enum.map(entries, & &1.path) == ["fine"]
+    end
+
+    test "rejects a dir path that escapes workspace.root_dir via ..", %{workspace: workspace} do
+      resource_fixture!(workspace, :dataset, "seeded_users", %{"data" => %{"a" => 1}})
+
+      assert Resources.list_dir(workspace, :dataset, "../../etc") == %{folders: [], entries: []}
+    end
+  end
+
   describe "write/4" do
     test "writes valid data, immediately re-fetchable", %{workspace: workspace} do
       dataset = %{"data" => %{"a" => 1}}

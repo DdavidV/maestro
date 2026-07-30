@@ -75,5 +75,24 @@ defmodule MaestroWeb.WorkspaceLive.Explorer.SuiteTest do
 
       assert html =~ "Could not load this suite"
     end
+
+    test "deleting a nested path removes the file and navigates back to the index", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      resource_fixture!(workspace, :suite, "checkout/smoke", suite("checkout-smoke"))
+
+      {:ok, view, _html} = live(conn, ~p"/workspace/#{workspace.id}/suites/checkout/smoke")
+
+      {:ok, index_live, html} =
+        view
+        |> element("button", "Delete")
+        |> render_click()
+        |> follow_redirect(conn)
+
+      assert html =~ "Deleted checkout/smoke."
+      refute has_element?(index_live, "tbody#suites a", "checkout/smoke")
+      assert Maestro.Resources.fetch(workspace, :suite, "checkout/smoke") == {:error, :not_found}
+    end
   end
 end

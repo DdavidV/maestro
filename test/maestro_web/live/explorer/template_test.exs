@@ -36,6 +36,51 @@ defmodule MaestroWeb.WorkspaceLive.Explorer.TemplateTest do
       assert has_element?(view, "tbody#templates a", "login_request")
       refute has_element?(view, "tbody#templates a", "logout_request")
     end
+
+    test "paginates instead of loading every template at once", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      for i <- 1..75 do
+        resource_fixture!(
+          workspace,
+          :template,
+          "template_#{String.pad_leading("#{i}", 3, "0")}",
+          template()
+        )
+      end
+
+      {:ok, view, html} = live(conn, ~p"/workspace/#{workspace.id}/templates")
+
+      assert html =~ "Page 1 of 2 (75 total)"
+      assert has_element?(view, "tbody#templates a", "template_001")
+      refute has_element?(view, "tbody#templates a", "template_051")
+
+      html = view |> element("button", "Next") |> render_click()
+
+      assert html =~ "Page 2 of 2 (75 total)"
+      assert has_element?(view, "tbody#templates a", "template_051")
+      refute has_element?(view, "tbody#templates a", "template_001")
+    end
+
+    test "search resets pagination back to page 1", %{conn: conn, workspace: workspace} do
+      for i <- 1..75 do
+        resource_fixture!(
+          workspace,
+          :template,
+          "template_#{String.pad_leading("#{i}", 3, "0")}",
+          template()
+        )
+      end
+
+      {:ok, view, _html} = live(conn, ~p"/workspace/#{workspace.id}/templates")
+
+      view |> element("button", "Next") |> render_click()
+      html = view |> form("#search-form", %{"query" => "template_0"}) |> render_change()
+
+      assert html =~ "Page 1 of 2 (75 total)"
+      assert has_element?(view, "tbody#templates a", "template_001")
+    end
   end
 
   describe "show" do

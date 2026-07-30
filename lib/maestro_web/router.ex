@@ -28,6 +28,11 @@ defmodule MaestroWeb.Router do
       scope "/workspace/:workspace_id" do
         live "/", WorkspaceLive.Explorer, :dashboard
         live "/:kind", WorkspaceLive.Explorer, :index
+        # "new" and "edit" are reserved: a resource whose path is exactly
+        # "new"/"edit", or that starts with "edit/", is unreachable via its
+        # own show page since these routes are matched first.
+        live "/:kind/new", WorkspaceLive.Form, :new
+        live "/:kind/edit/*path", WorkspaceLive.Form, :edit
         live "/:kind/*path", WorkspaceLive.Explorer, :show
       end
     end

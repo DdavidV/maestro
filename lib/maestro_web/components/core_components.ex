@@ -94,7 +94,10 @@ defmodule MaestroWeb.CoreComponents do
       <.button phx-click="go" variant="primary">Send!</.button>
       <.button navigate={~p"/"}>Home</.button>
   """
-  attr :rest, :global, include: ~w(href navigate patch method download name value disabled)
+  attr :rest, :global,
+    include: ~w(href navigate patch method download name value disabled type),
+    doc: "additional HTML attributes; pass type=\"submit\" explicitly to submit an enclosing form"
+
   attr :class, :any
   attr :variant, :string, values: ~w(primary)
   slot :inner_block, required: true
@@ -114,6 +117,8 @@ defmodule MaestroWeb.CoreComponents do
       </.link>
       """
     else
+      assigns = assign(assigns, :rest, Map.put_new(rest, :type, "button"))
+
       ~H"""
       <button class={@class} {@rest}>
         {render_slot(@inner_block)}
