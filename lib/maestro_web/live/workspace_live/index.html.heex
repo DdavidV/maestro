@@ -1,39 +1,87 @@
 <Layouts.app flash={@flash}>
-  <.header>
-    Workspaces
-    <:subtitle>Pick a workspace to browse, or register a new one.</:subtitle>
-  </.header>
+  <div class="flex flex-col" style="height: calc(100vh - 12rem)">
+    <.header>
+      Workspaces
+      <:subtitle>Pick a workspace to browse, or register a new one.</:subtitle>
+      <:actions>
+        <.button phx-click="open-new-workspace" variant="primary">New workspace</.button>
+      </:actions>
+    </.header>
 
-  <div class="mb-8">
-    <.table id="workspaces" rows={@workspaces}>
-      <:col :let={workspace} label="Name">
-        <.link navigate={~p"/workspace/#{workspace.id}"} class="link link-hover font-semibold">
-          {workspace.name}
-        </.link>
-      </:col>
-      <:col :let={workspace} label="Root dir">{workspace.root_dir}</:col>
-      <:col :let={workspace} label="Created">{workspace.created_at}</:col>
-      <:action :let={workspace}>
-        <.button
-          phx-click="delete"
-          phx-value-id={workspace.id}
-          data-confirm="Close this workspace? Its files are left on disk."
+    <form id="workspace-search-form" phx-change="search" class="my-4 max-w-sm shrink-0">
+      <input
+        type="text"
+        name="query"
+        value={@query}
+        placeholder="Search workspaces by name..."
+        class="input w-full"
+        phx-debounce="200"
+      />
+    </form>
+
+    <div class="card bg-base-100 border border-base-300 flex flex-col min-h-0 flex-1">
+      <div class="flex-1 min-h-0 overflow-y-auto">
+        <.table :if={@workspaces != []} id="workspaces" rows={@workspaces}>
+          <:col :let={workspace} label="Name">
+            <.link navigate={~p"/workspace/#{workspace.id}"} class="link link-hover font-semibold">
+              {workspace.name}
+            </.link>
+          </:col>
+          <:col :let={workspace} label="Root dir">
+            <span class="font-mono text-sm text-base-content/70">{workspace.root_dir}</span>
+          </:col>
+          <:col :let={workspace} label="Created">{workspace.created_at}</:col>
+          <:action :let={workspace}>
+            <.button
+              phx-click="delete"
+              phx-value-id={workspace.id}
+              data-confirm="Close this workspace? Its files are left on disk."
+            >
+              Close
+            </.button>
+          </:action>
+        </.table>
+
+        <div
+          :if={@workspaces == []}
+          class="flex flex-col items-center justify-center gap-2 h-full text-center p-10"
         >
-          Close
-        </.button>
-      </:action>
-    </.table>
-
-    <p :if={@workspaces == []} class="text-base-content/70">
-      No workspaces yet create one below.
-    </p>
+          <.icon name="hero-folder-open" class="size-10 text-base-content/30" />
+          <p class="text-base-content/70">
+            {if @query == "",
+              do: "No workspaces yet — create one to get started.",
+              else: "No workspaces match \"#{@query}\"."}
+          </p>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <.header>New workspace</.header>
+  <div
+    :if={@show_new_workspace}
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+  >
+    <div
+      class="card bg-base-100 border border-base-300 shadow-xl w-full max-w-md p-6"
+      phx-click-away="close-new-workspace"
+    >
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-lg">New workspace</h3>
+        <button
+          type="button"
+          phx-click="close-new-workspace"
+          class="btn btn-ghost btn-sm btn-circle"
+          aria-label="close"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </div>
 
-  <.form for={@form} phx-submit="create" class="flex flex-col gap-2 max-w-md">
-    <.input field={@form[:name]} label="Name" required />
-    <.input field={@form[:root_dir]} label="Root directory (absolute path)" required />
-    <.button variant="primary" class="mt-2">Create workspace</.button>
-  </.form>
+      <.form for={@form} id="new-workspace-form" phx-submit="create" class="flex flex-col gap-2">
+        <.input field={@form[:name]} label="Name" required />
+        <.input field={@form[:root_dir]} label="Root directory (absolute path)" required />
+        <.button type="submit" variant="primary" class="mt-2">Create workspace</.button>
+      </.form>
+    </div>
+  </div>
 </Layouts.app>

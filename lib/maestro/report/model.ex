@@ -43,6 +43,7 @@ defmodule Maestro.Report.Model do
   @type assertion_model :: %{
           status: :ok | :error,
           matcher: String.t(),
+          path: String.t() | nil,
           expected: term,
           actual: term,
           failures: [failure_row]
@@ -153,6 +154,7 @@ defmodule Maestro.Report.Model do
     %{
       status: result.status,
       matcher: Map.get(result.assertion, :matcher, "?"),
+      path: Map.get(result.assertion, :path),
       expected: Map.get(result.assertion, :expected),
       actual: result.actual,
       failures: Enum.map(result.reasons, &assertion_failure_row/1)

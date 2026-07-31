@@ -152,6 +152,11 @@ defmodule Maestro.Report.DefaultLayout do
     ~H"""
     <div class={"m-assertion m-assertion-#{@assertion.status}"}>
       <p><strong>{@assertion.matcher}</strong> — {@assertion.status}</p>
+      <ul class="m-expected-actual">
+        <li :if={@assertion.path}>path: {@assertion.path}</li>
+        <li>expected: {inspect(@assertion.expected)}</li>
+        <li>actual: {inspect(@assertion.actual)}</li>
+      </ul>
       <.failure_row :for={failure <- @assertion.failures} failure={failure} />
     </div>
     """
@@ -182,6 +187,7 @@ defmodule Maestro.Report.DefaultLayout do
     .m-suite, .m-testcase { border-left: 3px solid #ddd; padding-left: 1rem; margin: 1rem 0; }
     .m-step { border: 1px solid #eee; border-radius: .25rem; padding: .5rem 1rem; margin: .5rem 0; }
     .m-step-error { border-color: #f5b5bb; }
+    .m-expected-actual { color: #555; margin: .25rem 0; }
     .m-failure { background: #fff5f5; padding: .5rem 1rem; }
 
     .m-toc {

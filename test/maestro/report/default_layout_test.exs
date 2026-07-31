@@ -164,6 +164,52 @@ defmodule Maestro.Report.DefaultLayoutTest do
       assert (html |> String.split("reason: not_equal") |> length()) - 1 == 2
     end
 
+    test "a passing assertion still renders its expected and actual values" do
+      assertion = %AssertionResult{
+        status: :ok,
+        assertion: %{matcher: "json_match", expected: %{"a" => 1}},
+        actual: %{"a" => 1},
+        reasons: []
+      }
+
+      html =
+        render(
+          run_result(%{
+            suites: [
+              suite(%{
+                testcases: [testcase(%{steps: [step(%{assertions: [assertion]})]})]
+              })
+            ]
+          })
+        )
+
+      assert html =~ "expected: %{&quot;a&quot; =&gt; 1}"
+      assert html =~ "actual: %{&quot;a&quot; =&gt; 1}"
+    end
+
+    test "a passing assertion with a path shows the path alongside expected/actual" do
+      assertion = %AssertionResult{
+        status: :ok,
+        assertion: %{matcher: "json_match", expected: "ok", path: "$.echo.payload.status"},
+        actual: %{"echo" => %{"payload" => %{"status" => "ok"}}},
+        reasons: []
+      }
+
+      html =
+        render(
+          run_result(%{
+            suites: [
+              suite(%{
+                testcases: [testcase(%{steps: [step(%{assertions: [assertion]})]})]
+              })
+            ]
+          })
+        )
+
+      assert html =~ "path: $.echo.payload.status"
+      assert html =~ "expected: &quot;ok&quot;"
+    end
+
     test "a dispatch-error step renders stage/reason/details" do
       error = Client.Error.new(:client_lookup, :client_not_found, :not_found)
 

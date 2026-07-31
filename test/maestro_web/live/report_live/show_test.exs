@@ -87,6 +87,24 @@ defmodule MaestroWeb.ReportLive.ShowTest do
     assert has_element?(view, ".badge-error", "error")
   end
 
+  test "shows a passing assertion's expected/actual detail, not just its status", %{
+    conn: conn,
+    workspace: workspace
+  } do
+    resource_fixture!(workspace, :suite, "checkout/smoke", suite_with_assert("checkout-smoke", 1))
+
+    {:ok, run_id} = Runner.run(workspace, ["checkout/smoke"])
+    wait_until_done(run_id)
+
+    {:ok, view, _html} = live(conn, ~p"/workspace/#{workspace.id}/reports/#{run_id}")
+
+    html = render(view)
+    assert html =~ "path: $.echo.payload.a"
+    assert html =~ "expected: 1"
+    assert html =~ "actual: %{&quot;echo&quot;"
+    assert has_element?(view, ".badge-success", "ok")
+  end
+
   test "has a link back to the run page and a download link", %{
     conn: conn,
     workspace: workspace

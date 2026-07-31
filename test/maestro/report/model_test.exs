@@ -132,6 +132,43 @@ defmodule Maestro.Report.ModelTest do
       assert assertion_model.failures == []
     end
 
+    test "an assertion's path is carried through regardless of status" do
+      assertion = %AssertionResult{
+        status: :ok,
+        assertion: %{matcher: "json_match", expected: "ok", path: "$.echo.payload.status"},
+        actual: %{"echo" => %{"payload" => %{"status" => "ok"}}},
+        reasons: []
+      }
+
+      run_result =
+        run_result(%{
+          suites: [
+            suite(%{testcases: [testcase(%{steps: [step(%{assertions: [assertion]})]})]})
+          ]
+        })
+
+      model = Model.build(run_result)
+      [step_model] = Enum.at(model.suites, 0).testcases |> Enum.at(0) |> Map.fetch!(:steps)
+      [assertion_model] = step_model.assertions
+
+      assert assertion_model.path == "$.echo.payload.status"
+    end
+
+    test "an assertion without a path has path: nil" do
+      run_result =
+        run_result(%{
+          suites: [
+            suite(%{testcases: [testcase(%{steps: [step(%{assertions: [ok_assertion()]})]})]})
+          ]
+        })
+
+      model = Model.build(run_result)
+      [step_model] = Enum.at(model.suites, 0).testcases |> Enum.at(0) |> Map.fetch!(:steps)
+      [assertion_model] = step_model.assertions
+
+      assert assertion_model.path == nil
+    end
+
     test "a step whose response is a Client.Error produces dispatch_error and empty assertions" do
       error = Client.Error.new(:client_lookup, :client_not_found, :not_found)
 

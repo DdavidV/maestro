@@ -18,12 +18,56 @@ defmodule MaestroWeb.WorkspaceLiveTest do
       root_dir = Path.join(System.tmp_dir!(), "wlive_#{System.unique_integer([:positive])}")
       on_exit(fn -> File.rm_rf!(root_dir) end)
 
+      view
+      |> element("button", "New workspace")
+      |> render_click()
+
       html =
         view
-        |> form("form", %{"name" => "Brand New", "root_dir" => root_dir})
+        |> form("#new-workspace-form", %{"name" => "Brand New", "root_dir" => root_dir})
         |> render_submit()
 
       assert html =~ "Brand New"
+    end
+
+    test "searches workspaces by name", %{conn: conn} do
+      root_dir_a = Path.join(System.tmp_dir!(), "wlive_a_#{System.unique_integer([:positive])}")
+      root_dir_b = Path.join(System.tmp_dir!(), "wlive_b_#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm_rf!(root_dir_a) end)
+      on_exit(fn -> File.rm_rf!(root_dir_b) end)
+
+      {:ok, _} = Maestro.Workspaces.create("Checkout", root_dir_a)
+      {:ok, _} = Maestro.Workspaces.create("Performance", root_dir_b)
+
+      {:ok, view, _html} = live(conn, ~p"/workspaces")
+
+      html =
+        view
+        |> form("#workspace-search-form", %{"query" => "check"})
+        |> render_change()
+
+      assert html =~ "Checkout"
+      refute html =~ "Performance"
+    end
+
+    test "the new workspace form is hidden until the button is clicked", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/workspaces")
+
+      refute html =~ "new-workspace-form"
+
+      html =
+        view
+        |> element("button", "New workspace")
+        |> render_click()
+
+      assert html =~ "new-workspace-form"
+
+      html =
+        view
+        |> element("button[phx-click=close-new-workspace]")
+        |> render_click()
+
+      refute html =~ "new-workspace-form"
     end
 
     test "closes (unregisters) a workspace", %{conn: conn} do

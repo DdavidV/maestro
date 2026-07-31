@@ -103,6 +103,12 @@ defmodule MaestroWeb.ReportComponents do
         <span class="font-mono">{@assertion.matcher}</span>
       </div>
 
+      <ul class="mt-1 text-xs font-mono text-base-content/70 space-y-0.5">
+        <li :if={@assertion.path}>path: {@assertion.path}</li>
+        <li>expected: {inspect(@assertion.expected)}</li>
+        <li>actual: {inspect(@assertion.actual)}</li>
+      </ul>
+
       <.report_failure :for={failure <- @assertion.failures} failure={failure} />
     </div>
     """
