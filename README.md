@@ -35,10 +35,6 @@ across service boundaries.
 A test suite in Maestro can talk to any protocol a client is registered for (HTTP, Kafka, gRPC, raw TCP, ...),
 so it can exercise a real, running system end-to-end rather than relying only on mocks for the other
 side of a contract.
-For the cases where the other side of a contract genuinely can't be run for real could be an external
-system owned by a third party, or one that simply doesn't live in the same codebase or team:
-simulators are part of Maestro's architecture, standing in for that system so its side of the contract
-can still be exercised and verified.
 Suites are defined declaratively as JSON, so any tool or any person who doesn't know Elixir can
 author, trigger, and inspect them:
 
@@ -204,6 +200,17 @@ up together as one portable unit and every workspace still resolves correctly on
 even though its absolute path is now different. Nothing needs to be re-entered or reconfigured
 after such a move; only workspaces stored with a genuinely absolute (elsewhere) `root_dir` need that
 location to still exist wherever the registry ends up running.
+
+## Roadmap
+
+**Simulators** (not yet implemented) are a planned feature for cases where the other side of a
+contract genuinely can't be run for real in a test environment - an external system owned by a
+third party, or one that simply doesn't live in the same codebase or team. A simulator would
+stand in for that system, speaking its protocol well enough that a suite can still exercise and
+verify its side of the contract without the real dependency being reachable.
+
+This isn't implemented yet - the priority right now is polishing the core engine (suites,
+scenarios, clients, matchers, generators, the runner itself) before adding new surface area.
 
 ## Further reading
 
