@@ -30,6 +30,35 @@ defmodule MaestroWeb.WorkspaceLiveTest do
       assert html =~ "Brand New"
     end
 
+    test "suggests a root_dir under the host app's priv_dir, when host_app is set", %{
+      conn: conn
+    } do
+      Application.put_env(:maestro, :host_app, :maestro)
+      on_exit(fn -> Application.delete_env(:maestro, :host_app) end)
+
+      {:ok, view, _html} = live(conn, ~p"/workspaces")
+
+      html =
+        view
+        |> element("button", "New workspace")
+        |> render_click()
+
+      assert html =~ Path.join(:code.priv_dir(:maestro), "workspaces")
+    end
+
+    test "suggests a root_dir under Maestro's own priv_dir when host_app is unset", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/workspaces")
+
+      html =
+        view
+        |> element("button", "New workspace")
+        |> render_click()
+
+      assert html =~ Path.join(:code.priv_dir(:maestro), "workspaces")
+    end
+
     test "searches workspaces by name", %{conn: conn} do
       root_dir_a = Path.join(System.tmp_dir!(), "wlive_a_#{System.unique_integer([:positive])}")
       root_dir_b = Path.join(System.tmp_dir!(), "wlive_b_#{System.unique_integer([:positive])}")

@@ -109,6 +109,42 @@ touching a text editor or curl:
   mid-run.
 - **Breadcrumbs** on every page for quick, predictable navigation back up the hierarchy.
 
+## Configuration
+
+Everything below is `config :maestro, key: value` in a host application's own config
+(`config.exs`/`runtime.exs`), read via `Application.get_env/2,3` never required to run Maestro
+standalone, all of it has a working default out of the box.
+
+- **`:host_app`** the OTP application name of the app embedding Maestro as a dependency
+  (e.g. `:my_app`, matching that app's own `:app` in `mix.exs`). Used to locate a writable,
+  release-safe `priv_dir` for Maestro's own runtime data.
+  Raises at boot if set to something that isn't a loaded OTP application.
+  Defaults to Maestro's own `priv_dir` if unset.
+- **`:workspaces_registry_path`** absolute path to the JSON file the workspace registry (every
+  workspace's name/id/root_dir) is persisted to. Defaults to `workspaces.json` under `:host_app`'s
+  `priv_dir` (or Maestro's own, per above) if unset.
+- **`:start_endpoint?`** (boolean) whether `MaestroWeb.Endpoint` (the web GUI) is started at all.
+  Defaults to `true`; set to `false` for a host that only wants the Elixir API/runner, no HTTP
+  server. `MaestroWeb.Endpoint`'s own config (`http:`/`secret_key_base`/`url:`/...) is filled in
+  with working defaults at boot if a host hasn't set them (`config :maestro, MaestroWeb.Endpoint,
+  ...`), so the GUI is reachable out of the box; an explicit host config always takes precedence.
+- **`:report_dir`** root directory generated HTML reports are written under (each workspace gets
+  its own subdirectory beneath it). Defaults to `reports` under `:host_app`'s `priv_dir` (or
+  Maestro's own, if `:host_app` isn't set either.
+- **`:report_layout`** a module implementing the `Maestro.Report.Layout` behaviour, for a host that
+  wants to fully customize the generated HTML report's markup/styling. Defaults to the built-in
+  `Maestro.Report.DefaultLayout`.
+- **`:auto_report`** (boolean) whether a report is automatically generated to disk when a run
+  finishes. Defaults to `true`; set to `false` if a host only ever wants reports on demand
+  rather than one written for every run.
+- **`:max_scenario_depth`** (integer) the maximum nesting depth of scenario-calling-scenario chains
+  a suite is allowed, a backstop against pathological (but non-cyclic) nesting. Defaults to `50`.
+- **`:http_pool_options`** options passed straight through to `Finch.start_link/1` for the built-in
+  HTTP client's shared connection pool (pool size/count, per-host pools, ...). Defaults to `[]`
+  (Finch's own defaults). See `Maestro.Clients.Http`'s docs for the full shape.
+- **`:dns_cluster_query`** passed to `DNSCluster` for multi-node clustering in production (the
+  standard Phoenix convention). Defaults to `:ignore`; irrelevant for a single-node setup.
+
 ## Further reading
 
 See [docs/README.md](docs/README.md) for the full documentation index —

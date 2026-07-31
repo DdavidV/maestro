@@ -45,13 +45,18 @@ defmodule Maestro.Workspaces.Store do
   The file the workspace registry is persisted to *by default*, at boot,
   before any `reload/1` call.
 
-  Reads `config :maestro, :workspaces_registry_path`, falling back to
-  `workspaces.json` under Maestro's own `priv_dir` if unset.
+  Resolved in order:
+
+    1. `config :maestro, :workspaces_registry_path`, if set: used as-is.
+    2. `Path.join(Maestro.Util.host_priv_dir(), "workspaces.json")`
+       otherwise: the named host app's `priv_dir` if
+       `config :maestro, :host_app` is set, or Maestro's own `priv_dir`
+       if not.
   """
   @spec configured_registry_path() :: String.t()
   def configured_registry_path do
     Application.get_env(:maestro, :workspaces_registry_path) ||
-      Path.join(:code.priv_dir(:maestro), "workspaces.json")
+      Path.join(Maestro.Util.host_priv_dir(), "workspaces.json")
   end
 
   @spec list() :: [Workspace.t()]

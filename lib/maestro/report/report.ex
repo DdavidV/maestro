@@ -31,15 +31,19 @@ defmodule Maestro.Report do
 
   @doc """
   The root directory reports are written under. Reads
-  `config :maestro, :report_dir`, falling back to `priv/reports` under
-  Maestro's own `priv_dir` if unset. Each workspace gets its own
-  subdirectory under this root (see `report_path/1`) so a workspace with
-  many runs doesn't dump its reports into one shared directory alongside
-  every other workspace's.
+  `config :maestro, :report_dir`, falling back to `reports` under
+  `Maestro.Util.host_priv_dir/0` if unset (the named `:host_app`'s
+  `priv_dir`, or Maestro's own if `:host_app` isn't set either same
+  fallback `Maestro.Workspaces.Store.configured_registry_path/0` uses for
+  the workspace registry). Each workspace gets its own subdirectory under
+  this root (see `report_path/1`) so a workspace with many runs doesn't
+  dump its reports into one shared directory alongside every other
+  workspace's.
   """
   @spec report_dir() :: String.t()
   def report_dir do
-    Application.get_env(:maestro, :report_dir) || Path.join(:code.priv_dir(:maestro), "reports")
+    Application.get_env(:maestro, :report_dir) ||
+      Path.join(Maestro.Util.host_priv_dir(), "reports")
   end
 
   @doc """

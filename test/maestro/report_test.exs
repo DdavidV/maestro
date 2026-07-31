@@ -178,4 +178,21 @@ defmodule Maestro.ReportTest do
       assert {:error, {:write_failed, _reason}} = Report.generate(run_id)
     end
   end
+
+  describe "report_dir/0" do
+    test "falls back to Maestro.Util.host_priv_dir/0's reports subdirectory, when unset" do
+      Application.delete_env(:maestro, :report_dir)
+
+      assert Report.report_dir() ==
+               Path.join(Maestro.Util.host_priv_dir(), "reports")
+    end
+
+    test "prefers the host app's priv_dir over Maestro's own, when host_app is set" do
+      Application.delete_env(:maestro, :report_dir)
+      Application.put_env(:maestro, :host_app, :maestro)
+      on_exit(fn -> Application.delete_env(:maestro, :host_app) end)
+
+      assert Report.report_dir() == Path.join(:code.priv_dir(:maestro), "reports")
+    end
+  end
 end

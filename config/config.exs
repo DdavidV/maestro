@@ -10,17 +10,6 @@ import Config
 config :maestro,
   generators: [timestamp_type: :utc_datetime]
 
-# Configure the endpoint
-config :maestro, MaestroWeb.Endpoint,
-  url: [host: "localhost"],
-  adapter: Bandit.PhoenixAdapter,
-  render_errors: [
-    formats: [html: MaestroWeb.ErrorHTML, json: MaestroWeb.ErrorJSON],
-    layout: false
-  ],
-  pubsub_server: Maestro.PubSub,
-  live_view: [signing_salt: "XzGKx7gj"]
-
 # Configure LiveView
 config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.
@@ -55,11 +44,6 @@ config :logger, :default_formatter,
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
-
-# Configure ex_json_schema for validating Maestro's suite/scenario/step/dataset/template schemas
-config :ex_json_schema,
-  decode_json: &Jason.decode/1,
-  remote_schema_resolver: {Maestro.Resources.Schemas, :load_and_resolve_ref}
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

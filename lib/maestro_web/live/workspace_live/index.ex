@@ -23,7 +23,10 @@ defmodule MaestroWeb.WorkspaceLive.Index do
   end
 
   def handle_event("open-new-workspace", _params, socket) do
-    {:noreply, assign(socket, :show_new_workspace, true)}
+    {:noreply,
+     socket
+     |> assign(:show_new_workspace, true)
+     |> assign(:form, to_form(%{"name" => "", "root_dir" => suggested_root_dir()}))}
   end
 
   def handle_event("close-new-workspace", _params, socket) do
@@ -52,6 +55,10 @@ defmodule MaestroWeb.WorkspaceLive.Index do
      socket
      |> put_flash(:info, "Workspace closed.")
      |> assign_workspaces()}
+  end
+
+  defp suggested_root_dir do
+    Path.join([Maestro.Util.host_priv_dir(), "workspaces", "new-workspace"])
   end
 
   defp assign_workspaces(socket) do

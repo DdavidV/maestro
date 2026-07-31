@@ -26,6 +26,62 @@ defmodule Maestro.WorkspacesTest do
     end
   end
 
+  describe "configured_registry_path/0" do
+    test "falls back to Maestro's own priv_dir when host_app is unset" do
+      path = Maestro.Workspaces.Store.configured_registry_path()
+
+      assert path == Path.join(:code.priv_dir(:maestro), "workspaces.json")
+    end
+
+    test "respects an explicitly configured path" do
+      Application.put_env(:maestro, :workspaces_registry_path, "/tmp/custom_workspaces.json")
+      on_exit(fn -> Application.delete_env(:maestro, :workspaces_registry_path) end)
+
+      assert Maestro.Workspaces.Store.configured_registry_path() ==
+               "/tmp/custom_workspaces.json"
+    end
+
+    test "prefers the host app's priv_dir over the per-user fallback, when host_app is set" do
+      Application.put_env(:maestro, :host_app, :maestro)
+      on_exit(fn -> Application.delete_env(:maestro, :host_app) end)
+
+      path = Maestro.Workspaces.Store.configured_registry_path()
+
+      assert path == Path.join(:code.priv_dir(:maestro), "workspaces.json")
+    end
+
+    test "an explicit workspaces_registry_path still wins over host_app" do
+      Application.put_env(:maestro, :host_app, :maestro)
+      Application.put_env(:maestro, :workspaces_registry_path, "/tmp/custom_workspaces.json")
+
+      on_exit(fn ->
+        Application.delete_env(:maestro, :host_app)
+        Application.delete_env(:maestro, :workspaces_registry_path)
+      end)
+
+      assert Maestro.Workspaces.Store.configured_registry_path() ==
+               "/tmp/custom_workspaces.json"
+    end
+
+    test "a host_app that doesn't name a loaded application raises, rather than falling back" do
+      Application.put_env(:maestro, :host_app, :totally_bogus_app_name)
+      on_exit(fn -> Application.delete_env(:maestro, :host_app) end)
+
+      assert_raise RuntimeError, ~r/does not name a loaded OTP application/, fn ->
+        Maestro.Workspaces.Store.configured_registry_path()
+      end
+    end
+
+    test "a non-atom host_app raises" do
+      Application.put_env(:maestro, :host_app, "maestro")
+      on_exit(fn -> Application.delete_env(:maestro, :host_app) end)
+
+      assert_raise RuntimeError, ~r/must be an atom/, fn ->
+        Maestro.Workspaces.Store.configured_registry_path()
+      end
+    end
+  end
+
   describe "create/2, list/0, get/1, delete/1" do
     test "create registers a workspace with the five subdirectories" do
       root_dir = Path.join(System.tmp_dir!(), "wtest_#{System.unique_integer([:positive])}")
