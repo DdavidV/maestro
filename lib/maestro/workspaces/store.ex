@@ -25,6 +25,7 @@ defmodule Maestro.Workspaces.Store do
 
   require Logger
 
+  alias Maestro.Workspaces.Git
   alias Maestro.Workspaces.Workspace
 
   @spec start_link(keyword) :: GenServer.on_start()
@@ -67,6 +68,23 @@ defmodule Maestro.Workspaces.Store do
 
   @spec create(String.t(), String.t()) :: {:ok, Workspace.t()} | {:error, term}
   def create(name, root_dir), do: GenServer.call(__MODULE__, {:create, name, root_dir})
+
+  @doc """
+  Registers a new git-backed workspace named `name`: clones `remote_url`
+  into `root_dir` if it isn't already a git repo there (an existing checkout
+  at `root_dir` is used as-is, never re-cloned).
+  """
+  @spec create_git(String.t(), String.t(), String.t()) :: {:ok, Workspace.t()} | {:error, term}
+  def create_git(name, root_dir, remote_url) do
+    GenServer.call(__MODULE__, {:create_git, name, root_dir, remote_url}, 30_000)
+  end
+
+  @doc """
+  Runs `git pull` in a `vcs: :git` workspace's `root_dir`, refreshing it from
+  its remote. `{:error, :not_git}` for a `vcs: :none` workspace.
+  """
+  @spec pull(String.t()) :: :ok | {:error, term}
+  def pull(id), do: GenServer.call(__MODULE__, {:pull, id}, 30_000)
 
   @spec delete(String.t()) :: :ok | {:error, :not_found}
   def delete(id), do: GenServer.call(__MODULE__, {:delete, id})
@@ -114,6 +132,31 @@ defmodule Maestro.Workspaces.Store do
 
       {:error, _reason} = error ->
         {:reply, error, state}
+    end
+  end
+
+  def handle_call({:create_git, name, root_dir, remote_url}, _from, state) do
+    case build_git_workspace(name, root_dir, remote_url, Map.keys(state.workspaces)) do
+      {:ok, workspace} ->
+        new_state = %{state | workspaces: Map.put(state.workspaces, workspace.id, workspace)}
+        :ok = persist(new_state)
+        {:reply, {:ok, workspace}, new_state}
+
+      {:error, _reason} = error ->
+        {:reply, error, state}
+    end
+  end
+
+  def handle_call({:pull, id}, _from, state) do
+    case Map.fetch(state.workspaces, id) do
+      {:ok, %Workspace{vcs: :git} = workspace} ->
+        {:reply, Git.pull(workspace.root_dir), state}
+
+      {:ok, %Workspace{vcs: :none}} ->
+        {:reply, {:error, :not_git}, state}
+
+      :error ->
+        {:reply, {:error, :not_found}, state}
     end
   end
 
@@ -166,7 +209,8 @@ defmodule Maestro.Workspaces.Store do
         name: Map.fetch!(entry, "name"),
         root_dir: absolute_root_dir(Map.fetch!(entry, "root_dir"), registry_dir),
         created_at: DateTime.from_iso8601(entry["created_at"]) |> elem(1),
-        vcs: String.to_existing_atom(entry["vcs"] || "none")
+        vcs: String.to_existing_atom(entry["vcs"] || "none"),
+        remote_url: entry["remote_url"]
       }
 
       {workspace.id, workspace}
@@ -212,7 +256,8 @@ defmodule Maestro.Workspaces.Store do
       # (no `force:`) already returns it as-is in that case.
       root_dir: Path.relative_to(workspace.root_dir, Path.dirname(registry_path)),
       created_at: DateTime.to_iso8601(workspace.created_at),
-      vcs: Atom.to_string(workspace.vcs)
+      vcs: Atom.to_string(workspace.vcs),
+      remote_url: workspace.remote_url
     }
   end
 
@@ -231,20 +276,41 @@ defmodule Maestro.Workspaces.Store do
     end
   end
 
-  defp validate_root_dir(root_dir) do
+  defp build_git_workspace(name, root_dir, remote_url, existing_ids) do
+    with {:ok, root_dir} <- validate_absolute(root_dir),
+         :ok <- Git.ensure_cloned(remote_url, root_dir) do
+      ensure_subdirs!(root_dir)
+      id = unique_slug(name, existing_ids)
+
+      workspace = %Workspace{
+        id: id,
+        name: name,
+        root_dir: root_dir,
+        created_at: DateTime.utc_now(),
+        vcs: :git,
+        remote_url: remote_url
+      }
+
+      {:ok, workspace}
+    end
+  end
+
+  defp validate_absolute(root_dir) do
     if Path.type(root_dir) != :absolute do
       {:error, {:invalid_root_dir, :not_absolute}}
     else
-      root_dir = Path.expand(root_dir)
+      {:ok, Path.expand(root_dir)}
+    end
+  end
 
-      case File.mkdir_p(root_dir) do
-        :ok ->
-          ensure_subdirs!(root_dir)
-          {:ok, root_dir}
-
-        {:error, reason} ->
-          {:error, {:invalid_root_dir, reason}}
-      end
+  defp validate_root_dir(root_dir) do
+    with {:ok, root_dir} <- validate_absolute(root_dir),
+         :ok <- File.mkdir_p(root_dir) do
+      ensure_subdirs!(root_dir)
+      {:ok, root_dir}
+    else
+      {:error, {:invalid_root_dir, _reason}} = error -> error
+      {:error, reason} -> {:error, {:invalid_root_dir, reason}}
     end
   end
 

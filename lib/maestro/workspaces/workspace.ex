@@ -19,9 +19,10 @@ defmodule Maestro.Workspaces.Workspace do
           name: String.t(),
           root_dir: String.t(),
           created_at: DateTime.t(),
-          vcs: vcs
+          vcs: vcs,
+          remote_url: String.t() | nil
         }
 
   @enforce_keys [:id, :name, :root_dir, :created_at]
-  defstruct [:id, :name, :root_dir, :created_at, vcs: :none]
+  defstruct [:id, :name, :root_dir, :created_at, :remote_url, vcs: :none]
 end

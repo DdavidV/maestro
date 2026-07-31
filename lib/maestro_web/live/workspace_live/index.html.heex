@@ -30,8 +30,21 @@
           <:col :let={workspace} label="Root dir">
             <span class="font-mono text-sm text-base-content/70">{workspace.root_dir}</span>
           </:col>
+          <:col :let={workspace} label="Source">
+            <span :if={workspace.vcs == :none} class="text-sm text-base-content/70">local</span>
+            <span
+              :if={workspace.vcs == :git}
+              class="font-mono text-sm text-base-content/70"
+              title={workspace.remote_url}
+            >
+              <.icon name="hero-code-bracket" class="size-4 align-text-bottom" /> {workspace.remote_url}
+            </span>
+          </:col>
           <:col :let={workspace} label="Created">{workspace.created_at}</:col>
           <:action :let={workspace}>
+            <.button :if={workspace.vcs == :git} phx-click="pull" phx-value-id={workspace.id}>
+              Pull
+            </.button>
             <.button
               phx-click="delete"
               phx-value-id={workspace.id}
@@ -77,8 +90,35 @@
         </button>
       </div>
 
+      <div role="tablist" class="tabs tabs-boxed mb-4 w-fit">
+        <button
+          type="button"
+          role="tab"
+          class={["tab", @new_workspace_mode == "local" && "tab-active"]}
+          phx-click="new-workspace-mode"
+          phx-value-mode="local"
+        >
+          Local directory
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class={["tab", @new_workspace_mode == "git" && "tab-active"]}
+          phx-click="new-workspace-mode"
+          phx-value-mode="git"
+        >
+          Clone from git
+        </button>
+      </div>
+
       <.form for={@form} id="new-workspace-form" phx-submit="create" class="flex flex-col gap-2">
         <.input field={@form[:name]} label="Name" required />
+        <.input
+          :if={@new_workspace_mode == "git"}
+          field={@form[:remote_url]}
+          label="Git remote URL"
+          required
+        />
         <.input field={@form[:root_dir]} label="Root directory (absolute path)" required />
         <.button type="submit" variant="primary" class="mt-2">Create workspace</.button>
       </.form>

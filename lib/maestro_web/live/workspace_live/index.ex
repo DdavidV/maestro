@@ -8,9 +8,10 @@ defmodule MaestroWeb.WorkspaceLive.Index do
     {:ok,
      socket
      |> assign(:page_title, "Workspaces")
-     |> assign(:form, to_form(%{"name" => "", "root_dir" => ""}))
+     |> assign(:form, to_form(%{"name" => "", "root_dir" => "", "remote_url" => ""}))
      |> assign(:query, "")
      |> assign(:show_new_workspace, false)
+     |> assign(:new_workspace_mode, "local")
      |> assign_workspaces()}
   end
 
@@ -26,20 +27,39 @@ defmodule MaestroWeb.WorkspaceLive.Index do
     {:noreply,
      socket
      |> assign(:show_new_workspace, true)
-     |> assign(:form, to_form(%{"name" => "", "root_dir" => suggested_root_dir()}))}
+     |> assign(:new_workspace_mode, "local")
+     |> assign(
+       :form,
+       to_form(%{"name" => "", "root_dir" => suggested_root_dir(), "remote_url" => ""})
+     )}
   end
 
   def handle_event("close-new-workspace", _params, socket) do
     {:noreply, assign(socket, :show_new_workspace, false)}
   end
 
-  def handle_event("create", %{"name" => name, "root_dir" => root_dir}, socket) do
-    case Workspaces.create(name, root_dir) do
+  def handle_event("new-workspace-mode", %{"mode" => mode}, socket) do
+    root_dir = if mode == "local", do: suggested_root_dir(), else: ""
+
+    {:noreply,
+     socket
+     |> assign(:new_workspace_mode, mode)
+     |> assign(:form, to_form(%{"name" => "", "root_dir" => root_dir, "remote_url" => ""}))}
+  end
+
+  def handle_event("create", %{"name" => name, "root_dir" => root_dir} = params, socket) do
+    result =
+      case params["remote_url"] do
+        remote when remote in [nil, ""] -> Workspaces.create(name, root_dir)
+        remote_url -> Workspaces.create_git(name, root_dir, remote_url)
+      end
+
+    case result do
       {:ok, workspace} ->
         {:noreply,
          socket
          |> put_flash(:info, "Workspace #{workspace.name} created.")
-         |> assign(:form, to_form(%{"name" => "", "root_dir" => ""}))
+         |> assign(:form, to_form(%{"name" => "", "root_dir" => "", "remote_url" => ""}))
          |> assign(:show_new_workspace, false)
          |> assign_workspaces()}
 
@@ -55,6 +75,13 @@ defmodule MaestroWeb.WorkspaceLive.Index do
      socket
      |> put_flash(:info, "Workspace closed.")
      |> assign_workspaces()}
+  end
+
+  def handle_event("pull", %{"id" => id}, socket) do
+    case Workspaces.pull(id) do
+      :ok -> {:noreply, put_flash(socket, :info, "Workspace updated from its remote.")}
+      {:error, reason} -> {:noreply, put_flash(socket, :error, "Pull failed: #{inspect(reason)}")}
+    end
   end
 
   defp suggested_root_dir do

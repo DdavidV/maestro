@@ -122,6 +122,101 @@ defmodule Maestro.WorkspacesTest do
     end
   end
 
+  describe "create_git/3, pull/1" do
+    setup do
+      remote_dir =
+        Path.join(System.tmp_dir!(), "wtest_git_remote_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(remote_dir)
+      {_, 0} = System.cmd("git", ["init"], cd: remote_dir, stderr_to_stdout: true)
+      {_, 0} = System.cmd("git", ["config", "user.email", "test@example.com"], cd: remote_dir)
+      {_, 0} = System.cmd("git", ["config", "user.name", "Test"], cd: remote_dir)
+      File.write!(Path.join(remote_dir, "README.md"), "hello")
+      {_, 0} = System.cmd("git", ["add", "."], cd: remote_dir)
+
+      {_, 0} =
+        System.cmd("git", ["commit", "-m", "initial"], cd: remote_dir, stderr_to_stdout: true)
+
+      on_exit(fn -> File.rm_rf!(remote_dir) end)
+
+      %{remote_dir: remote_dir}
+    end
+
+    test "clones the remote and registers a vcs: :git workspace", %{remote_dir: remote_dir} do
+      root_dir = Path.join(System.tmp_dir!(), "wtest_git_#{System.unique_integer([:positive])}")
+
+      {:ok, workspace} = Maestro.Workspaces.create_git("Git Workspace", root_dir, remote_dir)
+
+      assert workspace.vcs == :git
+      assert workspace.remote_url == remote_dir
+      assert File.read!(Path.join(root_dir, "README.md")) == "hello"
+
+      for subdir <- ~w(suites scenarios datasets templates test_plans) do
+        assert File.dir?(Path.join(root_dir, subdir))
+      end
+
+      assert {:ok, ^workspace} = Maestro.Workspaces.get(workspace.id)
+    end
+
+    test "registering over an already-cloned root_dir doesn't re-clone or error", %{
+      remote_dir: remote_dir
+    } do
+      root_dir =
+        Path.join(System.tmp_dir!(), "wtest_git_existing_#{System.unique_integer([:positive])}")
+
+      {:ok, first} = Maestro.Workspaces.create_git("First", root_dir, remote_dir)
+      :ok = Maestro.Workspaces.delete(first.id)
+
+      assert {:ok, second} = Maestro.Workspaces.create_git("Second", root_dir, remote_dir)
+      assert second.vcs == :git
+      assert File.read!(Path.join(root_dir, "README.md")) == "hello"
+    end
+
+    test "an invalid remote does not register a workspace" do
+      root_dir =
+        Path.join(System.tmp_dir!(), "wtest_git_invalid_#{System.unique_integer([:positive])}")
+
+      assert {:error, {:git_failed, _args, _output}} =
+               Maestro.Workspaces.create_git("Bad Remote", root_dir, "/no/such/remote")
+
+      assert Maestro.Workspaces.list() == []
+    end
+
+    test "rejects a relative root_dir" do
+      assert {:error, {:invalid_root_dir, :not_absolute}} =
+               Maestro.Workspaces.create_git("Bad", "relative/path", "some-remote")
+    end
+
+    test "pull/1 refreshes a git workspace from its remote", %{remote_dir: remote_dir} do
+      root_dir =
+        Path.join(System.tmp_dir!(), "wtest_git_pull_#{System.unique_integer([:positive])}")
+
+      {:ok, workspace} = Maestro.Workspaces.create_git("Pullable", root_dir, remote_dir)
+
+      File.write!(Path.join(remote_dir, "second.md"), "more")
+      {_, 0} = System.cmd("git", ["add", "."], cd: remote_dir)
+
+      {_, 0} =
+        System.cmd("git", ["commit", "-m", "second"], cd: remote_dir, stderr_to_stdout: true)
+
+      assert :ok = Maestro.Workspaces.pull(workspace.id)
+      assert File.exists?(Path.join(root_dir, "second.md"))
+    end
+
+    test "pull/1 on a vcs: :none workspace is {:error, :not_git}" do
+      root_dir =
+        Path.join(System.tmp_dir!(), "wtest_pull_notgit_#{System.unique_integer([:positive])}")
+
+      {:ok, workspace} = Maestro.Workspaces.create("Local", root_dir)
+
+      assert Maestro.Workspaces.pull(workspace.id) == {:error, :not_git}
+    end
+
+    test "pull/1 on an unknown id is {:error, :not_found}" do
+      assert Maestro.Workspaces.pull("does-not-exist") == {:error, :not_found}
+    end
+  end
+
   describe "registry persistence across a Store reload" do
     test "a created workspace survives a reload from the same path" do
       root_dir =
@@ -212,6 +307,50 @@ defmodule Maestro.WorkspacesTest do
       assert {:ok, reloaded} = Maestro.Workspaces.get(workspace.id)
       assert reloaded.root_dir == Path.join([new_registry_dir, "workspaces", "moveable"])
       assert File.dir?(reloaded.root_dir)
+    end
+  end
+
+  describe "vcs/remote_url registry round-trip" do
+    test "a local workspace persists vcs: none and remote_url: nil, and decodes back cleanly" do
+      root_dir = Path.join(System.tmp_dir!(), "wtest_vcs_#{System.unique_integer([:positive])}")
+      {:ok, workspace} = Maestro.Workspaces.create("Vcs None", root_dir)
+
+      registry_path = Maestro.Workspaces.Store.registry_path()
+      stored = registry_path |> File.read!() |> Jason.decode!()
+      [entry] = Enum.filter(stored["workspaces"], &(&1["id"] == workspace.id))
+
+      assert entry["vcs"] == "none"
+      assert entry["remote_url"] == nil
+
+      :ok = Maestro.Workspaces.Store.reload(registry_path)
+      assert {:ok, reloaded} = Maestro.Workspaces.get(workspace.id)
+      assert reloaded.vcs == :none
+      assert reloaded.remote_url == nil
+    end
+
+    test "a registry entry with no remote_url key at all (pre-existing data) decodes to nil" do
+      registry_path =
+        Path.join(System.tmp_dir!(), "wtest_legacy_#{System.unique_integer([:positive])}.json")
+
+      root_dir =
+        Path.join(System.tmp_dir!(), "wtest_legacy_root_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(root_dir)
+
+      legacy_entry = %{
+        "id" => "legacy",
+        "name" => "Legacy",
+        "root_dir" => root_dir,
+        "created_at" => DateTime.to_iso8601(DateTime.utc_now()),
+        "vcs" => "none"
+      }
+
+      File.write!(registry_path, Jason.encode!(%{"workspaces" => [legacy_entry]}))
+
+      :ok = Maestro.Workspaces.Store.reload(registry_path)
+      assert {:ok, workspace} = Maestro.Workspaces.get("legacy")
+      assert workspace.vcs == :none
+      assert workspace.remote_url == nil
     end
   end
 
