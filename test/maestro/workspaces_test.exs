@@ -136,6 +136,85 @@ defmodule Maestro.WorkspacesTest do
     end
   end
 
+  describe "root_dir portability (stored relative to the registry file)" do
+    test "a root_dir under the registry's own directory is stored relative on disk", %{} do
+      registry_path = Maestro.Workspaces.Store.registry_path()
+      registry_dir = Path.dirname(registry_path)
+
+      root_dir =
+        Path.join([registry_dir, "workspaces", "portable_#{System.unique_integer([:positive])}"])
+
+      {:ok, workspace} = Maestro.Workspaces.create("Portable", root_dir)
+
+      stored = registry_path |> File.read!() |> Jason.decode!()
+      [entry] = Enum.filter(stored["workspaces"], &(&1["id"] == workspace.id))
+
+      refute Path.type(entry["root_dir"]) == :absolute,
+             "expected root_dir under the registry's own directory to be stored relative, " <>
+               "got: #{inspect(entry["root_dir"])}"
+    end
+
+    test "a root_dir outside the registry's directory tree is stored absolute, unchanged" do
+      # isolate_workspace_registry!/0 puts the registry directly under
+      # System.tmp_dir!/0, so a genuinely "elsewhere" root_dir needs its own
+      # isolated registry too, one level deeper, to guarantee it's not
+      # accidentally nested under the other.
+      registry_dir =
+        Path.join(System.tmp_dir!(), "wtest_registry_dir_#{System.unique_integer([:positive])}")
+
+      elsewhere_dir =
+        Path.join(System.tmp_dir!(), "wtest_elsewhere_dir_#{System.unique_integer([:positive])}")
+
+      on_exit(fn ->
+        File.rm_rf!(registry_dir)
+        File.rm_rf!(elsewhere_dir)
+      end)
+
+      registry_path = Path.join(registry_dir, "workspaces.json")
+      :ok = Maestro.Workspaces.Store.reload(registry_path)
+
+      root_dir = Path.join(elsewhere_dir, "workspace")
+      {:ok, workspace} = Maestro.Workspaces.create("Elsewhere", root_dir)
+
+      stored = registry_path |> File.read!() |> Jason.decode!()
+      [entry] = Enum.filter(stored["workspaces"], &(&1["id"] == workspace.id))
+
+      assert entry["root_dir"] == workspace.root_dir
+      assert Path.type(entry["root_dir"]) == :absolute
+    end
+
+    test "surviving a copy: registry + workspace dir moved together still resolve", %{} do
+      old_registry_dir =
+        Path.join(System.tmp_dir!(), "wtest_move_old_#{System.unique_integer([:positive])}")
+
+      new_registry_dir =
+        Path.join(System.tmp_dir!(), "wtest_move_new_#{System.unique_integer([:positive])}")
+
+      on_exit(fn ->
+        File.rm_rf!(old_registry_dir)
+        File.rm_rf!(new_registry_dir)
+      end)
+
+      File.mkdir_p!(old_registry_dir)
+      old_registry_path = Path.join(old_registry_dir, "workspaces.json")
+      :ok = Maestro.Workspaces.Store.reload(old_registry_path)
+
+      root_dir = Path.join([old_registry_dir, "workspaces", "moveable"])
+      {:ok, workspace} = Maestro.Workspaces.create("Moveable", root_dir)
+
+      # Simulate deploying the registry + its workspace directories to a new
+      # machine/release install path: copy the whole tree, then point a
+      # fresh Store at the copy's registry file.
+      File.cp_r!(old_registry_dir, new_registry_dir)
+      new_registry_path = Path.join(new_registry_dir, "workspaces.json")
+      :ok = Maestro.Workspaces.Store.reload(new_registry_path)
+
+      assert {:ok, reloaded} = Maestro.Workspaces.get(workspace.id)
+      assert reloaded.root_dir == Path.join([new_registry_dir, "workspaces", "moveable"])
+      assert File.dir?(reloaded.root_dir)
+    end
+  end
+
   describe "a malformed registry file" do
     test "invalid JSON: Store starts empty instead of crashing, file is left untouched" do
       path =

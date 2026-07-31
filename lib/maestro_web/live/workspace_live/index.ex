@@ -58,7 +58,8 @@ defmodule MaestroWeb.WorkspaceLive.Index do
   end
 
   defp suggested_root_dir do
-    Path.join([Maestro.Util.host_priv_dir(), "workspaces", "new-workspace"])
+    registry_dir = Workspaces.Store.registry_path() |> Path.dirname()
+    Path.join([registry_dir, "workspaces", "new-workspace"])
   end
 
   defp assign_workspaces(socket) do

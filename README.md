@@ -145,6 +145,66 @@ standalone, all of it has a working default out of the box.
 - **`:dns_cluster_query`** passed to `DNSCluster` for multi-node clustering in production (the
   standard Phoenix convention). Defaults to `:ignore`; irrelevant for a single-node setup.
 
+## Using Maestro as a dependency
+
+When Maestro is added as a dependency, its own runtime data (the workspace registry,
+generated reports) needs somewhere to live. Always set `:host_app` in `config/config.exs`,
+so it applies in every environment:
+
+```elixir
+# config/config.exs
+config :maestro, host_app: :my_app
+```
+
+Leave `:workspaces_registry_path`/`:report_dir` unset there. Unset, they resolve to
+`:code.priv_dir(:my_app)` (via `Maestro.Util.host_priv_dir/0`) (the *compiled* `priv/`
+directory Mix copies into `_build` and that a release ships as-is) always writable,
+always exists, in dev, in tests, and in a compiled release alike, with nothing further to
+configure. This is the right (and only correct) behavior for a release, since a release has
+no source tree on the target machine at all, only `_build`'s copy or whatever the release
+packaged.
+
+For local development only, it's convenient to instead have that data land in the `priv/`
+directory sitting next to your own `mix.exs`, so you can browse/inspect it directly. Do this
+in `config/dev.exs`, not `config.exs`: `dev.exs` is only ever loaded for `MIX_ENV=dev`, so a
+compiled release (built with `MIX_ENV=prod`) never sees it and falls back to the release-safe
+default above automatically, with nothing to remember to unset:
+
+```elixir
+# config/dev.exs
+config :maestro,
+  workspaces_registry_path: Path.expand("../priv/workspaces.json", __DIR__),
+  report_dir: Path.expand("../priv/reports", __DIR__)
+```
+
+Both `workspaces_registry_path` and `report_dir` must be **absolute paths** `Path.expand/2`
+(as above) is the safe way to make a path absolute at config time.
+
+Neither value has to point under `priv/` at all any absolute path works. `priv/` is just a
+convenient default: it's a directory Mix already knows how to package and ship as part of an
+app, so pointing there means your suites/workspace data travel to a testing environment
+alongside the rest of the release with no separate deploy step of their own. If your testing
+environment already keeps its test files somewhere else (a mounted volume, a path a CI runner
+checks out separately, a shared network path multiple app instances read from), point
+`workspaces_registry_path`/`report_dir` at that location instead there's no requirement to
+route everything through `priv/` if the environment you're actually deploying to already has
+its own convention for where test files live.
+
+### Workspace portability
+
+A workspace's `root_dir` is always an absolute path in memory.
+On disk, though, a `root_dir` that lives *under* the registry file's own directory
+(the common case: a workspace created via the GUI's suggested path, or any `root_dir` under
+`report_dir`'s directory) is stored **relative to the registry file**, not as a machine-specific
+absolute path. A `root_dir` that genuinely lives elsewhere (a shared/mounted location outside that
+directory tree) is stored absolute, unchanged.
+
+This means the registry file and its workspace directories can be copied, deployed, or backed
+up together as one portable unit and every workspace still resolves correctly on the new machine,
+even though its absolute path is now different. Nothing needs to be re-entered or reconfigured
+after such a move; only workspaces stored with a genuinely absolute (elsewhere) `root_dir` need that
+location to still exist wherever the registry ends up running.
+
 ## Further reading
 
 See [docs/README.md](docs/README.md) for the full documentation index —

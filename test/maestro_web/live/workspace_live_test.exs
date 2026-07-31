@@ -30,11 +30,10 @@ defmodule MaestroWeb.WorkspaceLiveTest do
       assert html =~ "Brand New"
     end
 
-    test "suggests a root_dir under the host app's priv_dir, when host_app is set", %{
+    test "suggests a root_dir next to wherever the registry file actually lives", %{
       conn: conn
     } do
-      Application.put_env(:maestro, :host_app, :maestro)
-      on_exit(fn -> Application.delete_env(:maestro, :host_app) end)
+      registry_dir = Maestro.Workspaces.Store.registry_path() |> Path.dirname()
 
       {:ok, view, _html} = live(conn, ~p"/workspaces")
 
@@ -43,20 +42,7 @@ defmodule MaestroWeb.WorkspaceLiveTest do
         |> element("button", "New workspace")
         |> render_click()
 
-      assert html =~ Path.join(:code.priv_dir(:maestro), "workspaces")
-    end
-
-    test "suggests a root_dir under Maestro's own priv_dir when host_app is unset", %{
-      conn: conn
-    } do
-      {:ok, view, _html} = live(conn, ~p"/workspaces")
-
-      html =
-        view
-        |> element("button", "New workspace")
-        |> render_click()
-
-      assert html =~ Path.join(:code.priv_dir(:maestro), "workspaces")
+      assert html =~ Path.join(registry_dir, "workspaces")
     end
 
     test "searches workspaces by name", %{conn: conn} do

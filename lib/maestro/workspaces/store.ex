@@ -145,7 +145,7 @@ defmodule Maestro.Workspaces.Store do
   end
 
   defp decode(path, contents) do
-    %{registry_path: path, workspaces: decode_workspaces!(contents)}
+    %{registry_path: path, workspaces: decode_workspaces!(path, contents)}
   rescue
     error ->
       Logger.error(
@@ -156,14 +156,15 @@ defmodule Maestro.Workspaces.Store do
       %{registry_path: path, workspaces: %{}}
   end
 
-  defp decode_workspaces!(contents) do
+  defp decode_workspaces!(registry_path, contents) do
     %{"workspaces" => workspaces} = Jason.decode!(contents)
+    registry_dir = Path.dirname(registry_path)
 
     Map.new(workspaces, fn entry ->
       workspace = %Workspace{
         id: Map.fetch!(entry, "id"),
         name: Map.fetch!(entry, "name"),
-        root_dir: Map.fetch!(entry, "root_dir"),
+        root_dir: absolute_root_dir(Map.fetch!(entry, "root_dir"), registry_dir),
         created_at: DateTime.from_iso8601(entry["created_at"]) |> elem(1),
         vcs: String.to_existing_atom(entry["vcs"] || "none")
       }
@@ -172,19 +173,44 @@ defmodule Maestro.Workspaces.Store do
     end)
   end
 
+  # A stored root_dir is either absolute (a workspace deliberately kept
+  # outside the registry's own directory tree, e.g. a shared/mounted test
+  # environment used exactly as written) or relative (see encode_workspace/2
+  # below), resolved against the registry file's own directory so a registry
+  # moved/deployed alongside its workspace directories together still
+  # resolves correctly on a new machine or release install path.
+  defp absolute_root_dir(root_dir, registry_dir) do
+    case Path.type(root_dir) do
+      :absolute -> root_dir
+      _relative -> Path.expand(root_dir, registry_dir)
+    end
+  end
+
   defp persist(state) do
-    payload = %{workspaces: Enum.map(Map.values(state.workspaces), &encode_workspace/1)}
+    payload = %{
+      workspaces:
+        Enum.map(Map.values(state.workspaces), &encode_workspace(&1, state.registry_path))
+    }
 
     File.mkdir_p!(Path.dirname(state.registry_path))
     File.write!(state.registry_path, Jason.encode!(payload, pretty: true))
     :ok
   end
 
-  defp encode_workspace(%Workspace{} = workspace) do
+  defp encode_workspace(%Workspace{} = workspace, registry_path) do
     %{
       id: workspace.id,
       name: workspace.name,
-      root_dir: workspace.root_dir,
+      # Stored relative to the registry file's own directory whenever
+      # root_dir lives under it (the common case: a workspace created under
+      # the same priv_dir the registry itself lives in), so the registry
+      # file and its workspace directories can be copied/deployed together
+      # as one portable unit, without every root_dir baking in a
+      # machine-specific absolute path. A root_dir that lives genuinely
+      # elsewhere (a shared/mounted location outside the registry's own
+      # directory tree) is stored absolute, unchanged -- Path.relative_to/2
+      # (no `force:`) already returns it as-is in that case.
+      root_dir: Path.relative_to(workspace.root_dir, Path.dirname(registry_path)),
       created_at: DateTime.to_iso8601(workspace.created_at),
       vcs: Atom.to_string(workspace.vcs)
     }
