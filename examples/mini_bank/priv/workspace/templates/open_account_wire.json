@@ -1,0 +1,13 @@
+{
+  "name": "open_account_wire",
+  "description": "Opens a new MiniBank account over the wire protocol, with a freshly generated account number and the owner/initial_balance filled in from the calling step's dataset.",
+  "clients": ["wire"],
+  "payload": {
+    "op": "open_account",
+    "args": {
+      "account_number": { "$generated": "account_number" },
+      "owner": "{{owner}}",
+      "initial_balance": "{{initial_balance}}"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "full-regression",
+  "name": "Full Regression",
+  "description": "Every MiniBank suite, run together as one unit the full end-to-end demo of account opening, deposits/withdrawals, transfers (both happy path and insufficient-funds), the HTTP API, and rows-driven bulk account opening.",
+  "test_suites": [
+    "open_account",
+    "deposit_and_withdraw",
+    "transfer_happy_path",
+    "transfer_insufficient_funds",
+    "http_api",
+    "bulk_account_opening"
+  ]
+}

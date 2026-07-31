@@ -1,0 +1,62 @@
+{
+  "id": "transfer-insufficient-funds",
+  "name": "Transfer (insufficient funds)",
+  "description": "Verifies MiniBank correctly rejects a transfer larger than the sender's balance, leaving both accounts unchanged.",
+  "tags": ["transfers", "regression"],
+  "testcases": [
+    {
+      "id": "transfer-rejected-when-sender-lacks-funds",
+      "name": "Transfer is rejected when the sender lacks funds",
+      "steps": [
+        { "scenario": "open_session", "dataset": "alice_seed" },
+        {
+          "name": "open recipient account",
+          "client": "wire",
+          "template": "open_account_wire",
+          "dataset": "bob_seed",
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": "ok" }
+          ],
+          "save": [
+            { "path": "$.result.account_number", "as": "recipient_account_number" }
+          ]
+        },
+        {
+          "name": "attempt to transfer more than the sender's balance",
+          "client": "wire",
+          "template": {
+            "clients": ["wire"],
+            "payload": {
+              "op": "transfer",
+              "args": {
+                "from": "{{account_number}}",
+                "to": "{{recipient_account_number}}",
+                "amount": "{{transfer_amount}}"
+              }
+            }
+          },
+          "dataset": "transfer_insufficient_funds",
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": "error" },
+            { "matcher": "json_match", "path": "$.reason", "expected": "insufficient_funds" }
+          ]
+        },
+        {
+          "name": "sender balance is unchanged after the rejected transfer",
+          "client": "wire",
+          "template": {
+            "clients": ["wire"],
+            "payload": {
+              "op": "get_balance",
+              "args": { "account_number": "{{account_number}}" }
+            }
+          },
+          "dataset": { "data": { "note": "confirms the rejected transfer above had no side effect" } },
+          "assert": [
+            { "matcher": "money_equals", "path": "$.result.balance", "expected": 10000 }
+          ]
+        }
+      ]
+    }
+  ]
+}

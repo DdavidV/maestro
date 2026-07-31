@@ -1,0 +1,133 @@
+{
+  "id": "http-api",
+  "name": "HTTP API",
+  "description": "Exercises Maestro's built-in http client and json_schema_match matcher against MiniBank's REST API, alongside the custom wire/db_client extension points used by every other suite.",
+  "tags": ["http", "smoke"],
+  "testcases": [
+    {
+      "id": "open-and-fetch-account-over-http",
+      "name": "Open an account over HTTP, then fetch it back",
+      "steps": [
+        {
+          "name": "open account via POST /accounts",
+          "client": "http",
+          "template": {
+            "clients": ["http"],
+            "options": {
+              "method": "POST",
+              "url": "{{http_base_url}}/accounts"
+            },
+            "payload": {
+              "account_number": { "$generated": "account_number" },
+              "owner": "Carol",
+              "initial_balance": 5000
+            }
+          },
+          "dataset": { "data": { "http_base_url": { "$generated": "http_base_url" } } },
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": 201 },
+            { "matcher": "json_match", "path": "$.body.owner", "expected": "Carol" }
+          ],
+          "save": [
+            { "path": "$.body.account_number", "as": "http_account_number" }
+          ]
+        },
+        {
+          "name": "fetch the account back via GET /accounts/:account_number",
+          "client": "http",
+          "template": {
+            "clients": ["http"],
+            "options": {
+              "method": "GET",
+              "url": "{{http_base_url}}/accounts/{{http_account_number}}"
+            },
+            "payload": {}
+          },
+          "dataset": { "data": { "http_base_url": { "$generated": "http_base_url" } } },
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": 200 },
+            { "matcher": "json_match", "path": "$.body.owner", "expected": "Carol" },
+            {
+              "matcher": "json_schema_match",
+              "path": "$.body",
+              "expected": {
+                "type": "object",
+                "required": ["account_number", "owner", "balance"],
+                "properties": {
+                  "account_number": { "type": "string" },
+                  "owner": { "type": "string" },
+                  "balance": { "type": "integer", "minimum": 0 }
+                }
+              }
+            },
+            {
+              "matcher": "json_match",
+              "path": "$.body",
+              "expected": {
+                "account_number": "$expected",
+                "owner": "Carol",
+                "balance": "$expected",
+                "$_": "$unexpected"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "withdraw-more-than-balance-over-http",
+      "name": "Withdrawing more than the balance is rejected over HTTP",
+      "steps": [
+        {
+          "name": "open an account with a small balance",
+          "client": "http",
+          "template": {
+            "clients": ["http"],
+            "options": {
+              "method": "POST",
+              "url": "{{http_base_url}}/accounts"
+            },
+            "payload": {
+              "account_number": { "$generated": "account_number" },
+              "owner": "Dave",
+              "initial_balance": 100
+            }
+          },
+          "dataset": { "data": { "http_base_url": { "$generated": "http_base_url" } } },
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": 201 }
+          ],
+          "save": [
+            { "path": "$.body.account_number", "as": "http_account_number" }
+          ]
+        },
+        {
+          "name": "attempt to withdraw more than the balance",
+          "client": "http",
+          "template": {
+            "clients": ["http"],
+            "options": {
+              "method": "POST",
+              "url": "{{http_base_url}}/accounts/{{http_account_number}}/withdraw"
+            },
+            "payload": { "amount": 101 }
+          },
+          "dataset": { "data": { "http_base_url": { "$generated": "http_base_url" } } },
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": 422 },
+            { "matcher": "json_match", "path": "$.body.error", "expected": "insufficient_funds" },
+            {
+              "matcher": "json_match",
+              "path": "$.body",
+              "expected": {
+                "error": "insufficient_funds",
+                "balance": "$unexpected",
+                "account_number": "$unexpected"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

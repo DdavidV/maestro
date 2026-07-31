@@ -1,0 +1,5 @@
+{
+  "name": "bob_seed",
+  "description": "Seed data for a second account (Bob) used as a transfer counterparty, opened with a starting balance of 0.00.",
+  "data": { "owner": "Bob", "initial_balance": 0 }
+}

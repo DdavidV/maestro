@@ -1,0 +1,9 @@
+{
+  "name": "new_customers",
+  "description": "A table of new customers to open accounts for, one row per customer a step using this dataset runs once per row, in order.",
+  "rows": [
+    { "owner": "Carol", "initial_balance": 2000 },
+    { "owner": "Dave", "initial_balance": 5000 },
+    { "owner": "Erin", "initial_balance": 0 }
+  ]
+}

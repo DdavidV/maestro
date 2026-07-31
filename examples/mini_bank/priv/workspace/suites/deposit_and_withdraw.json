@@ -1,0 +1,78 @@
+{
+  "id": "deposit-and-withdraw",
+  "name": "Deposit and Withdraw",
+  "description": "Verifies depositing and withdrawing funds updates an account's balance correctly, and that withdrawing more than the balance is rejected.",
+  "tags": ["accounts", "regression"],
+  "testcases": [
+    {
+      "id": "deposit-then-withdraw",
+      "name": "Deposit then withdraw",
+      "steps": [
+        { "scenario": "open_session", "dataset": "alice_seed" },
+        {
+          "name": "deposit $25.00",
+          "client": "wire",
+          "template": {
+            "clients": ["wire"],
+            "payload": {
+              "op": "deposit",
+              "args": { "account_number": "{{account_number}}", "amount": 2500 }
+            }
+          },
+          "dataset": { "data": { "note": "deposits on top of alice_seed's 10000 starting balance" } },
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": "ok" },
+            { "matcher": "money_equals", "path": "$.result.balance", "expected": 12500 }
+          ]
+        },
+        {
+          "name": "withdraw $5.00",
+          "client": "wire",
+          "template": {
+            "clients": ["wire"],
+            "payload": {
+              "op": "withdraw",
+              "args": { "account_number": "{{account_number}}", "amount": 500 }
+            }
+          },
+          "dataset": { "data": { "note": "withdraws from the post-deposit 12500 balance" } },
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": "ok" },
+            { "matcher": "money_equals", "path": "$.result.balance", "expected": 12000 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "withdraw-more-than-balance-fails",
+      "name": "Withdraw more than the balance fails",
+      "steps": [
+        { "scenario": "open_session", "dataset": "bob_seed" },
+        {
+          "name": "attempt to withdraw $50.00 from a $0.00 account",
+          "client": "wire",
+          "template": {
+            "clients": ["wire"],
+            "payload": {
+              "op": "withdraw",
+              "args": { "account_number": "{{account_number}}", "amount": 5000 }
+            }
+          },
+          "dataset": { "data": { "note": "bob_seed opens with a 0 balance, so any positive withdrawal must fail" } },
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": "error" },
+            { "matcher": "json_match", "path": "$.reason", "expected": "insufficient_funds" },
+            {
+              "matcher": "json_match",
+              "expected": {
+                "status": "error",
+                "reason": "insufficient_funds",
+                "result": "$unexpected"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "name": "transfer_insufficient_funds",
+  "description": "A transfer amount deliberately larger than the sender's opening balance, to exercise MiniBank's insufficient_funds error path.",
+  "data": { "transfer_amount": 15000 }
+}

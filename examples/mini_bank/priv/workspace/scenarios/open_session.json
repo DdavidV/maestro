@@ -1,0 +1,21 @@
+{
+  "name": "open_session",
+  "description": "Opens a fresh MiniBank account to act as this testcase's session owner, saving its account number as {{account_number}} for every later step to reference MiniBank's equivalent of a login/auth step, since the banking domain itself has no separate authentication concept.",
+  "default_dataset": {
+    "data": { "owner": "Test User", "initial_balance": 0 }
+  },
+  "steps": [
+    {
+      "name": "open account for session",
+      "client": "wire",
+      "template": "open_account_wire",
+      "assert": [
+        { "matcher": "json_match", "path": "$.status", "expected": "ok" }
+      ],
+      "save": [
+        { "path": "$.result.account_number", "as": "account_number" },
+        { "path": "$.result.owner", "as": "account_owner" }
+      ]
+    }
+  ]
+}

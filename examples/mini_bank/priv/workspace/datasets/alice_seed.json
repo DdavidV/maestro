@@ -1,0 +1,5 @@
+{
+  "name": "alice_seed",
+  "description": "Seed data for a testcase whose session owner is Alice, opened with a starting balance of 100.00.",
+  "data": { "owner": "Alice", "initial_balance": 10000 }
+}

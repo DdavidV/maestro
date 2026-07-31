@@ -1,0 +1,71 @@
+{
+  "id": "open-account",
+  "name": "Open Account",
+  "description": "Verifies opening a new MiniBank account returns the expected owner and starting balance, read back through both the wire protocol and the db_client.",
+  "tags": ["smoke", "accounts"],
+  "testcases": [
+    {
+      "id": "open-account-with-starting-balance",
+      "name": "Open an account with a starting balance",
+      "steps": [
+        {
+          "scenario": "open_session",
+          "dataset": "alice_seed"
+        },
+        {
+          "name": "check balance immediately after opening, over wire",
+          "client": "wire",
+          "template": {
+            "clients": ["wire"],
+            "payload": {
+              "op": "get_balance",
+              "args": { "account_number": "{{account_number}}" }
+            }
+          },
+          "dataset": { "data": { "note": "uses {{account_number}} saved by open_session" } },
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": "ok" },
+            { "matcher": "json_match", "path": "$.result.owner", "expected": "Alice" },
+            { "matcher": "money_equals", "path": "$.result.balance", "expected": 10000 },
+            {
+              "matcher": "json_match",
+              "path": "$.result",
+              "expected": {
+                "account_number": "$expected",
+                "owner": "Alice",
+                "balance": "$expected",
+                "$_": "$unexpected"
+              }
+            }
+          ]
+        },
+        {
+          "name": "check the same account through db_client",
+          "client": "db_client",
+          "template": {
+            "clients": ["db_client"],
+            "payload": {
+              "op": "get_account",
+              "args": { "account_number": "{{account_number}}" }
+            }
+          },
+          "dataset": { "data": { "note": "confirms the wire and db_client reads agree" } },
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": "ok" },
+            { "matcher": "money_equals", "path": "$.row.balance", "expected": 10000 },
+            {
+              "matcher": "json_match",
+              "path": "$.row",
+              "expected": {
+                "account_number": "$expected",
+                "owner": "$expected",
+                "balance": "$expected",
+                "$_": "$unexpected"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "id": "transfer-happy-path",
+  "name": "Transfer (happy path)",
+  "description": "Verifies transferring funds from one account to another succeeds and both balances reflect the transfer.",
+  "tags": ["transfers", "smoke"],
+  "testcases": [
+    {
+      "id": "transfer-succeeds-with-sufficient-funds",
+      "name": "Transfer succeeds with sufficient funds",
+      "steps": [
+        { "scenario": "open_session", "dataset": "alice_seed" },
+        {
+          "name": "open recipient account",
+          "client": "wire",
+          "template": "open_account_wire",
+          "dataset": "bob_seed",
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": "ok" }
+          ],
+          "save": [
+            { "path": "$.result.account_number", "as": "recipient_account_number" }
+          ]
+        },
+        {
+          "name": "transfer $30.00 from sender to recipient",
+          "client": "wire",
+          "template": {
+            "clients": ["wire"],
+            "payload": {
+              "op": "transfer",
+              "args": {
+                "from": "{{account_number}}",
+                "to": "{{recipient_account_number}}",
+                "amount": 3000
+              }
+            }
+          },
+          "dataset": { "data": { "note": "transfers 3000 from alice_seed's 10000 starting balance" } },
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": "ok" },
+            { "matcher": "money_equals", "path": "$.result.from.balance", "expected": 7000 },
+            { "matcher": "money_equals", "path": "$.result.to.balance", "expected": 3000 }
+          ]
+        }
+      ]
+    }
+  ]
+}

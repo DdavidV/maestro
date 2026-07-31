@@ -1,0 +1,25 @@
+{
+  "id": "bulk-account-opening",
+  "name": "Bulk Account Opening",
+  "description": "Demonstrates a rows-type dataset: a single step, driven by a table of new customers, runs once per row opening one account per customer and asserting each row's own expected owner/balance.",
+  "tags": ["accounts", "rows"],
+  "testcases": [
+    {
+      "id": "open-one-account-per-row",
+      "name": "Open one account per row of new_customers",
+      "steps": [
+        {
+          "name": "open account for this row's customer",
+          "client": "wire",
+          "template": "open_account_wire",
+          "dataset": "new_customers",
+          "assert": [
+            { "matcher": "json_match", "path": "$.status", "expected": "ok" },
+            { "matcher": "json_match", "path": "$.result.owner", "expected": "{{owner}}" },
+            { "matcher": "money_equals", "path": "$.result.balance", "expected": "{{initial_balance}}" }
+          ]
+        }
+      ]
+    }
+  ]
+}

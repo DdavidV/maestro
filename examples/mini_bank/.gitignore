@@ -1,0 +1,12 @@
+/_build/
+/deps/
+/doc/
+erl_crash.dump
+*.ez
+mini_bank-*.tar
+
+# Maestro's own runtime bookkeeping -- regenerated at every boot, not the
+# same as the checked-in priv/workspace/ content directory.
+/priv/workspaces.json
+/priv/reports/*
+!/priv/reports/.gitkeep
