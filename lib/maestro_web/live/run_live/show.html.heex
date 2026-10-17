@@ -1,4 +1,4 @@
-<Layouts.app flash={@flash} workspace={@workspace}>
+<Layouts.app flash={@flash} workspace={@workspace} active={:history}>
   <:drawer>
     <.workspace_drawer workspace={@workspace} />
   </:drawer>
@@ -14,19 +14,33 @@
   </:breadcrumbs>
 
   <.header>
-    Run <span class="font-mono">{@run_id}</span>
-    <:subtitle>{@workspace.name}</:subtitle>
+    <span class="font-mono text-xl">{@run_id}</span>
+    <:eyebrow>
+      <.icon name="hero-play-mini" class="size-3.5" /> Run
+      <.status_badge status={@run_result.status} class="ml-1" />
+    </:eyebrow>
+    <:subtitle>
+      {length(@run_result.suites)} {if length(@run_result.suites) == 1,
+        do: "suite",
+        else: "suites"} · live progress updates automatically
+    </:subtitle>
     <:actions>
-      <.status_badge status={@run_result.status} />
       <.button navigate={"/workspace/#{@workspace.id}/reports/#{@run_id}"} variant="primary">
-        View report
+        <.icon name="hero-document-chart-bar-mini" class="size-4" /> View report
       </.button>
     </:actions>
   </.header>
 
-  <.suite_card :for={suite <- @run_result.suites} suite={suite} />
+  <.run_summary :if={@run_result.suites != []} suites={@run_result.suites} />
 
-  <p :if={@run_result.suites == []} class="text-base-content/70">
+  <div class="space-y-4">
+    <.suite_card :for={suite <- @run_result.suites} suite={suite} />
+  </div>
+
+  <div
+    :if={@run_result.suites == []}
+    class="panel px-6 py-12 text-center text-sm text-base-content/60"
+  >
     This run has no suites.
-  </p>
+  </div>
 </Layouts.app>

@@ -62,23 +62,24 @@ defmodule MaestroWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="toast toast-top toast-end z-50 p-4"
       {@rest}
     >
-      <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
-      ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
+      <div class="flex w-80 sm:w-96 items-start gap-3 rounded-box border border-base-300 bg-base-100 p-3.5 text-sm shadow-lg">
+        <span class={[
+          "grid size-6 shrink-0 place-items-center rounded-full",
+          @kind == :info && "bg-success/15 text-success",
+          @kind == :error && "bg-error/15 text-error"
+        ]}>
+          <.icon :if={@kind == :info} name="hero-check-micro" class="size-4" />
+          <.icon :if={@kind == :error} name="hero-exclamation-triangle-micro" class="size-4" />
+        </span>
+        <div class="min-w-0 flex-1 pt-0.5 text-wrap break-words">
           <p :if={@title} class="font-semibold">{@title}</p>
-          <p>{msg}</p>
+          <p class="text-base-content/80">{msg}</p>
         </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label="close">
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button type="button" class="group self-start cursor-pointer p-0.5" aria-label="close">
+          <.icon name="hero-x-mark" class="size-4 opacity-40 group-hover:opacity-80" />
         </button>
       </div>
     </div>
@@ -98,17 +99,34 @@ defmodule MaestroWeb.CoreComponents do
     include: ~w(href navigate patch method download name value disabled type),
     doc: "additional HTML attributes; pass type=\"submit\" explicitly to submit an enclosing form"
 
-  attr :class, :any
-  attr :variant, :string, values: ~w(primary)
+  attr :class, :any, default: nil, doc: "extra classes, appended to the variant's own"
+
+  attr :variant, :string,
+    values: ~w(primary ghost danger),
+    doc:
+      "`primary` (solid accent), `ghost` (no chrome), `danger` (destructive); default is a neutral outlined button"
+
+  attr :size, :string, default: "sm", values: ~w(xs sm md)
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
+    variants = %{
+      "primary" => "btn-primary shadow-xs",
+      "ghost" => "btn-ghost text-base-content/70 hover:text-base-content",
+      "danger" =>
+        "border-base-300 bg-base-100 text-error shadow-xs hover:border-error/40 hover:bg-error/10",
+      nil => "border-base-300 bg-base-100 shadow-xs hover:bg-base-200"
+    }
+
+    sizes = %{"xs" => "btn-xs", "sm" => "btn-sm", "md" => nil}
 
     assigns =
-      assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant])]
-      end)
+      assign(assigns, :class, [
+        "btn gap-1.5 font-medium",
+        Map.fetch!(sizes, assigns.size),
+        Map.fetch!(variants, assigns[:variant]),
+        assigns.class
+      ])
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
       ~H"""
@@ -246,7 +264,7 @@ defmodule MaestroWeb.CoreComponents do
     ~H"""
     <div class="fieldset mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="label mb-1.5 text-xs font-medium text-base-content/80">{@label}</span>
         <select
           id={@id}
           name={@name}
@@ -267,7 +285,7 @@ defmodule MaestroWeb.CoreComponents do
     ~H"""
     <div class="fieldset mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="label mb-1.5 text-xs font-medium text-base-content/80">{@label}</span>
         <textarea
           id={@id}
           name={@name}
@@ -288,7 +306,7 @@ defmodule MaestroWeb.CoreComponents do
     ~H"""
     <div class="fieldset mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="label mb-1.5 text-xs font-medium text-base-content/80">{@label}</span>
         <input
           type={@type}
           name={@name}
@@ -309,8 +327,8 @@ defmodule MaestroWeb.CoreComponents do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="hero-exclamation-circle" class="size-5" />
+    <p class="mt-1.5 flex gap-1.5 items-center text-xs text-error">
+      <.icon name="hero-exclamation-circle-mini" class="size-4" />
       {render_slot(@inner_block)}
     </p>
     """
@@ -320,21 +338,30 @@ defmodule MaestroWeb.CoreComponents do
   Renders a header with title.
   """
   slot :inner_block, required: true
+  slot :eyebrow, doc: "a small label above the title, e.g. the resource kind"
   slot :subtitle
   slot :actions
 
   def header(assigns) do
     ~H"""
-    <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
-      <div>
-        <h1 class="text-lg font-semibold leading-8">
+    <header class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+      <div class="min-w-0">
+        <div
+          :if={@eyebrow != []}
+          class="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-base-content/50"
+        >
+          {render_slot(@eyebrow)}
+        </div>
+        <h1 class="text-2xl font-semibold tracking-tight break-words">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="text-sm text-base-content/70">
+        <p :if={@subtitle != []} class="mt-1 text-sm text-base-content/60">
           {render_slot(@subtitle)}
         </p>
       </div>
-      <div class="flex-none">{render_slot(@actions)}</div>
+      <div :if={@actions != []} class="flex flex-none flex-wrap items-center gap-2">
+        {render_slot(@actions)}
+      </div>
     </header>
     """
   end
@@ -371,7 +398,7 @@ defmodule MaestroWeb.CoreComponents do
       end
 
     ~H"""
-    <table class="table table-zebra table-pin-rows">
+    <table class="data-table">
       <thead>
         <tr>
           <th :for={col <- @col}>{col[:label]}</th>
@@ -389,8 +416,8 @@ defmodule MaestroWeb.CoreComponents do
           >
             {render_slot(col, @row_item.(row))}
           </td>
-          <td :if={@action != []} class="w-0 font-semibold">
-            <div class="flex gap-4">
+          <td :if={@action != []} class="w-0">
+            <div class="flex justify-end gap-2">
               <%= for action <- @action do %>
                 {render_slot(action, @row_item.(row))}
               <% end %>

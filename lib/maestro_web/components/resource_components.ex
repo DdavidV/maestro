@@ -41,6 +41,30 @@ defmodule MaestroWeb.ResourceComponents do
     Enum.find_value(resource_tiles(), fn {k, label, _segment} -> k == kind && label end)
   end
 
+  @doc "A heroicon name representing `kind`, used in the sidebar, dashboard and page headers."
+  @spec kind_icon(atom) :: String.t()
+  def kind_icon(:suite), do: "hero-beaker"
+  def kind_icon(:scenario), do: "hero-queue-list"
+  def kind_icon(:dataset), do: "hero-table-cells"
+  def kind_icon(:template), do: "hero-code-bracket"
+  def kind_icon(:test_plan), do: "hero-clipboard-document-list"
+
+  @doc "The singular display label for `kind` (e.g. `:test_plan` -> `\"Test plan\"`)."
+  @spec kind_singular(atom) :: String.t()
+  def kind_singular(:suite), do: "Suite"
+  def kind_singular(:scenario), do: "Scenario"
+  def kind_singular(:dataset), do: "Dataset"
+  def kind_singular(:template), do: "Template"
+  def kind_singular(:test_plan), do: "Test plan"
+
+  @doc "A one-line explanation of what `kind` is, for the dashboard and empty states."
+  @spec kind_description(atom) :: String.t()
+  def kind_description(:suite), do: "Testcases made of ordered steps and assertions."
+  def kind_description(:scenario), do: "Reusable step sequences shared across suites."
+  def kind_description(:dataset), do: "Values or rows of data that steps render with."
+  def kind_description(:template), do: "Payloads sent through a registered client."
+  def kind_description(:test_plan), do: "Named groups of suites run together."
+
   @doc """
   Renders a breadcrumb trail: always starts with `workspace`'s own name
   (linking back to its dashboard, `/workspace/:id`), followed by `crumbs`
@@ -63,18 +87,21 @@ defmodule MaestroWeb.ResourceComponents do
       assign(assigns, :all_crumbs, [{assigns.workspace.name, workspace_to} | assigns.crumbs])
 
     ~H"""
-    <div class="flex items-center flex-wrap gap-1.5 text-sm">
-      <.icon name="hero-map-pin" class="size-4 text-base-content/40 shrink-0" />
+    <nav aria-label="Breadcrumb" class="flex min-w-0 items-center gap-1.5 text-sm">
       <%= for {{label, to}, index} <- Enum.with_index(@all_crumbs) do %>
         <.icon
           :if={index > 0}
-          name="hero-chevron-right"
-          class="size-3.5 text-base-content/40 shrink-0"
+          name="hero-chevron-right-mini"
+          class="size-4 shrink-0 text-base-content/30"
         />
-        <.link :if={to} navigate={to} class="link link-hover font-mono">{label}</.link>
-        <span :if={!to} class="font-mono font-semibold text-base-content">{label}</span>
+        <.link
+          :if={to}
+          navigate={to}
+          class="truncate text-base-content/60 transition-colors hover:text-base-content"
+        >{label}</.link>
+        <span :if={!to} class="truncate font-medium text-base-content">{label}</span>
       <% end %>
-    </div>
+    </nav>
     """
   end
 
@@ -170,10 +197,10 @@ defmodule MaestroWeb.ResourceComponents do
       )
 
     ~H"""
-    <span class="label mb-1 gap-1">
+    <span class="label mb-1.5 gap-1 text-xs font-medium text-base-content/80">
       {render_slot(@inner_block)}
-      <span :if={@tooltip} class="tooltip tooltip-right" data-tip={@tooltip}>
-        <.icon name="hero-question-mark-circle" class="size-3.5 text-base-content/50" />
+      <span :if={@tooltip} class="tooltip tooltip-right font-normal" data-tip={@tooltip}>
+        <.icon name="hero-question-mark-circle-mini" class="size-3.5 text-base-content/40" />
       </span>
     </span>
     """
@@ -215,7 +242,10 @@ defmodule MaestroWeb.ResourceComponents do
 
   def kind_badge(assigns) do
     ~H"""
-    <span class={["badge badge-soft badge-sm", @class]}>{@label}</span>
+    <span class={[
+      "inline-flex items-center rounded-md border border-base-300 bg-base-200 px-1.5 py-0.5 text-xs font-medium text-base-content/70",
+      @class
+    ]}>{@label}</span>
     """
   end
 
@@ -227,12 +257,14 @@ defmodule MaestroWeb.ResourceComponents do
 
   def dataset_body(assigns) do
     ~H"""
-    <div :if={data = @dataset["data"]} class="mb-4">
-      <h4 class="font-semibold text-sm mb-1">data</h4>
+    <div :if={data = @dataset["data"]} class="space-y-2">
+      <div class="section-label">
+        Data · {map_size(data)} {if map_size(data) == 1, do: "field", else: "fields"}
+      </div>
       <.key_value_table map={data} />
     </div>
-    <div :if={rows = @dataset["rows"]}>
-      <h4 class="font-semibold text-sm mb-1">rows ({length(rows)})</h4>
+    <div :if={rows = @dataset["rows"]} class="space-y-2">
+      <div class="section-label">Rows · {length(rows)}</div>
       <.rows_table rows={rows} />
     </div>
     """
@@ -242,14 +274,18 @@ defmodule MaestroWeb.ResourceComponents do
 
   def key_value_table(assigns) do
     ~H"""
-    <table class="table table-sm table-zebra w-auto">
-      <tbody>
-        <tr :for={{key, value} <- @map}>
-          <th class="whitespace-nowrap">{key}</th>
-          <td>{inspect_value(value)}</td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="overflow-x-auto rounded-field border border-base-300 bg-base-100">
+      <table class="w-full text-sm">
+        <tbody class="divide-y divide-base-300">
+          <tr :for={{key, value} <- @map}>
+            <th class="w-1/3 whitespace-nowrap bg-base-200/60 px-3 py-2 text-left align-top font-mono text-xs font-medium text-base-content/70">
+              {key}
+            </th>
+            <td class="px-3 py-2 font-mono text-xs break-all">{inspect_value(value)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     """
   end
 
@@ -260,18 +296,31 @@ defmodule MaestroWeb.ResourceComponents do
     assigns = assign(assigns, :columns, columns)
 
     ~H"""
-    <table class="table table-sm table-zebra">
-      <thead>
-        <tr>
-          <th :for={col <- @columns}>{col}</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr :for={row <- @rows}>
-          <td :for={col <- @columns}>{inspect_value(Map.get(row, col))}</td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="overflow-x-auto rounded-field border border-base-300 bg-base-100">
+      <table class="w-full text-sm">
+        <thead class="bg-base-200/60">
+          <tr>
+            <th class="w-10 px-3 py-2 text-left font-mono text-xs font-medium text-base-content/40">
+              #
+            </th>
+            <th
+              :for={col <- @columns}
+              class="px-3 py-2 text-left font-mono text-xs font-medium text-base-content/70 whitespace-nowrap"
+            >
+              {col}
+            </th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-base-300 border-t border-base-300">
+          <tr :for={{row, i} <- Enum.with_index(@rows, 1)}>
+            <td class="px-3 py-2 font-mono text-xs text-base-content/40">{i}</td>
+            <td :for={col <- @columns} class="px-3 py-2 font-mono text-xs">
+              {inspect_value(Map.get(row, col))}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     """
   end
 
@@ -284,43 +333,93 @@ defmodule MaestroWeb.ResourceComponents do
 
   def step_card(assigns) do
     ~H"""
-    <div class="card bg-base-200 p-4 mb-2">
-      <div class="flex items-center gap-2 mb-2">
-        <span class="font-mono text-xs text-base-content/50">#{@index + 1}</span>
-        <span class="font-semibold">{@step["name"] || step_default_name(@step)}</span>
-        <.kind_badge :if={@step["scenario"]} label="scenario call" />
-        <.kind_badge :if={@step["client"]} label={@step["client"]} />
+    <div class="relative flex gap-3">
+      <div class="flex flex-col items-center">
+        <span class={[
+          "grid size-6 shrink-0 place-items-center rounded-full border text-[0.6875rem] font-semibold",
+          if(@step["scenario"],
+            do: "border-accent/30 bg-accent/10 text-accent",
+            else: "border-base-300 bg-base-100 text-base-content/60"
+          )
+        ]}>
+          {@index + 1}
+        </span>
+        <span class="mt-1 w-px flex-1 bg-base-300 group-last/step:hidden" />
       </div>
 
-      <div :if={ref = scenario_ref(@step)} class="text-sm">
-        <span class="text-base-content/70">scenario:</span>
-        <span class="font-mono">{ref}</span>
-      </div>
-      <div :if={inline = inline_scenario(@step)} class="ml-4 border-l-2 border-base-300 pl-4">
-        <.step_card :for={{s, i} <- Enum.with_index(inline["steps"] || [])} step={s} index={i} />
-      </div>
+      <div class="min-w-0 flex-1 pb-4">
+        <div class="flex flex-wrap items-center gap-2 pt-0.5">
+          <span class="font-medium">{@step["name"] || step_default_name(@step)}</span>
+          <span
+            :if={@step["scenario"]}
+            class="inline-flex items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent"
+          >
+            <.icon name="hero-queue-list-micro" class="size-3" /> scenario call
+          </span>
+          <.kind_badge :if={@step["client"]} label={@step["client"]} class="font-mono" />
+        </div>
 
-      <div :if={ref = template_ref(@step)} class="text-sm">
-        <span class="text-base-content/70">template:</span>
-        <span class="font-mono">{ref}</span>
-      </div>
-      <div :if={inline = inline_template(@step)} class="text-sm">
-        <span class="text-base-content/70">clients:</span> {Enum.join(inline["clients"] || [], ", ")}
-        <pre class="mt-1 text-xs bg-base-100 rounded p-2 overflow-x-auto">{inspect_value(inline["payload"])}</pre>
-      </div>
+        <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+          <.step_ref :if={ref = scenario_ref(@step)} label="Scenario" value={ref} />
+          <.step_ref :if={ref = template_ref(@step)} label="Template" value={ref} />
+          <%= if inline = inline_template(@step) do %>
+            <dt class="text-base-content/50">Template</dt>
+            <dd class="min-w-0 space-y-1.5">
+              <span class="text-xs text-base-content/60">
+                inline · clients: {Enum.join(inline["clients"] || [], ", ")}
+              </span>
+              <pre class="code-block text-xs">{Jason.encode!(inline["payload"], pretty: true)}</pre>
+            </dd>
+          <% end %>
+          <.step_ref
+            :if={is_binary(@step["dataset"])}
+            label="Dataset"
+            value={@step["dataset"]}
+          />
+          <%= if is_map(@step["dataset"]) do %>
+            <dt class="text-base-content/50">Dataset</dt>
+            <dd class="min-w-0 space-y-3"><.dataset_body dataset={@step["dataset"]} /></dd>
+          <% end %>
+          <%= if (@step["assert"] || []) != [] do %>
+            <dt class="text-base-content/50">Asserts</dt>
+            <dd class="min-w-0 space-y-1">
+              <div
+                :for={a <- @step["assert"] || []}
+                class="flex flex-wrap items-center gap-1.5 text-xs"
+              >
+                <.icon name="hero-check-badge-micro" class="size-3.5 text-base-content/40" />
+                <span class="font-mono font-medium">{a["matcher"] || "json_match"}</span>
+                <span class="text-base-content/40">@</span>
+                <code class="font-mono text-base-content/70">{a["path"]}</code>
+              </div>
+            </dd>
+          <% end %>
+        </dl>
 
-      <div :if={dataset = @step["dataset"]} class="text-sm mt-2">
-        <span class="text-base-content/70">dataset:</span>
-        <span :if={is_binary(dataset)} class="font-mono">{dataset}</span>
-        <.dataset_body :if={is_map(dataset)} dataset={dataset} />
-      </div>
-
-      <div :for={{a, i} <- Enum.with_index(@step["assert"] || [])} class="text-sm mt-1">
-        <span class="text-base-content/70">assert #{i + 1}:</span>
-        <span class="font-mono">{a["matcher"] || "json_match"}</span>
-        @ <span class="font-mono">{a["path"]}</span>
+        <div
+          :if={inline = inline_scenario(@step)}
+          class="mt-3 rounded-field border border-base-300 p-3"
+        >
+          <div class="section-label mb-3">Inline scenario</div>
+          <div
+            :for={{s, i} <- Enum.with_index(inline["steps"] || [])}
+            class="group/step"
+          >
+            <.step_card step={s} index={i} />
+          </div>
+        </div>
       </div>
     </div>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :value, :string, required: true
+
+  defp step_ref(assigns) do
+    ~H"""
+    <dt class="text-base-content/50">{@label}</dt>
+    <dd class="min-w-0 truncate font-mono text-[0.8125rem]">{@value}</dd>
     """
   end
 

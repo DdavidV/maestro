@@ -451,7 +451,7 @@ defmodule MaestroWeb.WorkspaceLive.Form do
     kind = socket.assigns.kind
 
     socket
-    |> assign(:page_title, "New #{ResourceComponents.kind_label(kind)}")
+    |> assign(:page_title, "New #{String.downcase(ResourceComponents.kind_singular(kind))}")
     |> assign(:path, nil)
     |> assign(:current_path, nil)
     |> assign(:path_input, "")

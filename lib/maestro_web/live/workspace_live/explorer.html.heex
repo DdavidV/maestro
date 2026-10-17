@@ -1,4 +1,8 @@
-<Layouts.app flash={@flash} workspace={@workspace}>
+<Layouts.app
+  flash={@flash}
+  workspace={@workspace}
+  active={if @live_action == :dashboard, do: :overview}
+>
   <:drawer>
     <.workspace_drawer
       workspace={@workspace}
@@ -19,201 +23,386 @@
     />
   </:breadcrumbs>
 
-  <div :if={@live_action == :dashboard}>
+  <%!-- Dashboard --%>
+  <div :if={@live_action == :dashboard} class="space-y-8">
     <.header>
       {@workspace.name}
-      <:subtitle>{@workspace.root_dir}</:subtitle>
+      <:eyebrow>
+        <.icon name="hero-squares-2x2-mini" class="size-3.5" /> Workspace overview
+      </:eyebrow>
+      <:subtitle>
+        <span class="inline-flex flex-wrap items-center gap-2">
+          <span class="kbd-path break-all text-base-content/60">{@workspace.root_dir}</span>
+          <span
+            :if={@workspace.vcs == :git}
+            class="inline-flex items-center gap-1 text-xs"
+            title={@workspace.remote_url}
+          >
+            <.icon name="hero-code-bracket-mini" class="size-3.5" /> git
+          </span>
+        </span>
+      </:subtitle>
+      <:actions>
+        <.button navigate={"/workspace/#{@workspace.id}/history"}>
+          <.icon name="hero-clock-mini" class="size-4" /> History
+        </.button>
+        <.button navigate={"/workspace/#{@workspace.id}/run"} variant="primary">
+          <.icon name="hero-play-mini" class="size-4" /> Start a run
+        </.button>
+      </:actions>
     </.header>
 
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+    <section class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
       <.link
         :for={{kind, label, path} <- resource_tiles()}
         patch={"/workspace/#{@workspace.id}/#{path}"}
-        class="card bg-base-200 hover:bg-base-300 transition p-6 text-center"
+        class="panel group flex flex-col p-4 transition hover:border-primary/40 hover:shadow-sm"
       >
-        <div class="text-3xl font-bold">{@counts[kind]}</div>
-        <div class="text-sm text-base-content/70 mt-1">{label}</div>
-      </.link>
-    </div>
-  </div>
-
-  <div :if={@live_action == :index} class="flex flex-col" style="height: calc(100vh - 12rem)">
-    <.header>
-      {kind_label(@kind)}
-      <:subtitle>{@workspace.name}</:subtitle>
-      <:actions>
-        <.button patch={"/workspace/#{@workspace.id}/#{@segment}/new"} variant="primary">
-          New {kind_label(@kind)}
-        </.button>
-      </:actions>
-    </.header>
-
-    <form id="search-form" phx-change="search" class="mb-4 max-w-sm shrink-0">
-      <input
-        type="text"
-        name="query"
-        value={@query}
-        placeholder="Search by path..."
-        class="input w-full"
-        phx-debounce="200"
-      />
-    </form>
-
-    <div class="flex-1 min-h-0 overflow-y-auto">
-      <.table id={@segment} rows={@streams.entries} row_item={fn {_id, entry} -> entry end}>
-        <:col :let={entry} label="Path">
-          <.link
-            patch={"/workspace/#{@workspace.id}/#{@segment}/#{entry.path}"}
-            class="link link-hover font-mono"
-          >
-            {entry.path}
-          </.link>
-        </:col>
-        <:col :let={entry} label="Name">{entry.name}</:col>
-        <:col :let={entry} label="Description">{entry.description}</:col>
-        <:col :let={entry} :if={@kind == :suite} label="Tags">
-          <.kind_badge :for={tag <- entry.tags} label={tag} />
-        </:col>
-      </.table>
-
-      <p :if={@total == 0} class="text-base-content/70">No {kind_label(@kind)} found.</p>
-    </div>
-
-    <div :if={@total > @page_size} class="flex items-center gap-2 mt-4 shrink-0">
-      <.button disabled={@page <= 1} phx-click="paginate" phx-value-page={@page - 1}>
-        Previous
-      </.button>
-      <span class="text-sm text-base-content/70">
-        Page {@page} of {ceil(@total / @page_size)} ({@total} total)
-      </span>
-      <.button
-        disabled={@page * @page_size >= @total}
-        phx-click="paginate"
-        phx-value-page={@page + 1}
-      >
-        Next
-      </.button>
-    </div>
-  </div>
-
-  <div :if={@live_action == :show} class="flex flex-col" style="height: calc(100vh - 12rem)">
-    <.header>
-      {@resource["name"] || @path}
-      <:subtitle><span class="font-mono">{@path}</span></:subtitle>
-      <:actions>
-        <.button :if={!@error && @kind in [:suite, :test_plan]} phx-click="run" variant="primary">
-          Run
-        </.button>
-        <.button
-          :if={!@error}
-          patch={"/workspace/#{@workspace.id}/#{@segment}/edit/#{@path}"}
-          variant="primary"
-        >
-          Edit
-        </.button>
-        <.button
-          :if={!@error}
-          phx-click="delete"
-          data-confirm={"Delete #{@path}? This cannot be undone."}
-        >
-          Delete
-        </.button>
-      </:actions>
-    </.header>
-
-    <div class="flex-1 min-h-0 overflow-y-auto">
-      <div :if={@error} class="alert alert-error">
-        Could not load this {@kind |> Atom.to_string() |> String.replace("_", " ")}: {inspect(
-          @error
-        )}
-      </div>
-
-      <div :if={@resource && @kind == :suite}>
-        <p :if={@resource["description"]} class="mb-4 text-base-content/70">
-          {@resource["description"]}
-        </p>
-
-        <div class="mb-4">
-          <.kind_badge :for={tag <- @resource["tags"] || []} label={tag} />
-        </div>
-
-        <h3 class="font-semibold mb-2">Testcases</h3>
-        <div
-          :for={testcase <- @resource["testcases"]}
-          class="card bg-base-100 border border-base-300 p-4 mb-4"
-        >
-          <div class="font-semibold mb-1">{testcase["name"] || testcase["id"]}</div>
-          <div class="text-xs font-mono text-base-content/50 mb-2">{testcase["id"]}</div>
-          <p :if={testcase["description"]} class="text-sm text-base-content/70 mb-2">
-            {testcase["description"]}
-          </p>
-
-          <.step_card
-            :for={{step, i} <- Enum.with_index(testcase["steps"])}
-            step={step}
-            index={i}
+        <div class="flex items-center justify-between">
+          <span class="grid size-8 place-items-center rounded-field bg-primary/10 text-primary">
+            <.icon name={kind_icon(kind)} class="size-4" />
+          </span>
+          <.icon
+            name="hero-arrow-up-right-mini"
+            class="size-4 text-base-content/0 transition group-hover:text-base-content/40"
           />
         </div>
-      </div>
-
-      <div :if={@resource && @kind == :scenario}>
-        <p :if={@resource["description"]} class="mb-4 text-base-content/70">
-          {@resource["description"]}
+        <div class="mt-4 text-3xl font-semibold tabular-nums tracking-tight">
+          {@counts[kind]}
+        </div>
+        <div class="mt-0.5 text-sm font-medium">{label}</div>
+        <p class="mt-1 hidden text-xs leading-relaxed text-base-content/50 sm:block">
+          {kind_description(kind)}
         </p>
+      </.link>
+    </section>
 
-        <div :if={default_dataset = @resource["default_dataset"]} class="mb-4">
-          <h3 class="font-semibold mb-2">Default dataset</h3>
-          <span :if={is_binary(default_dataset)} class="font-mono">{default_dataset}</span>
-          <.dataset_body :if={is_map(default_dataset)} dataset={default_dataset} />
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <section class="panel overflow-hidden lg:col-span-2">
+        <div class="panel-header">
+          <h2 class="text-sm font-semibold">Recent runs</h2>
+          <.link
+            :if={@recent_runs != []}
+            navigate={"/workspace/#{@workspace.id}/history"}
+            class="text-xs font-medium text-primary hover:underline"
+          >
+            View all
+          </.link>
         </div>
 
-        <h3 class="font-semibold mb-2">Steps</h3>
-        <.step_card :for={{step, i} <- Enum.with_index(@resource["steps"])} step={step} index={i} />
-      </div>
-
-      <div :if={@resource && @kind == :dataset}>
-        <p :if={@resource["description"]} class="mb-4 text-base-content/70">
-          {@resource["description"]}
-        </p>
-        <.dataset_body dataset={@resource} />
-      </div>
-
-      <div :if={@resource && @kind == :template}>
-        <p :if={@resource["description"]} class="mb-4 text-base-content/70">
-          {@resource["description"]}
-        </p>
-
-        <h3 class="font-semibold mb-1">Clients</h3>
-        <div class="mb-4">
-          <.kind_badge :for={client <- @resource["clients"] || []} label={client} />
-        </div>
-
-        <h3 class="font-semibold mb-1">Payload</h3>
-        <pre class="bg-base-200 rounded p-3 text-sm overflow-x-auto mb-4">{Jason.encode!(@resource["payload"], pretty: true)}</pre>
-
-        <div :if={@resource["options"]}>
-          <h3 class="font-semibold mb-1">Options</h3>
-          <pre class="bg-base-200 rounded p-3 text-sm overflow-x-auto">{Jason.encode!(@resource["options"], pretty: true)}</pre>
-        </div>
-      </div>
-
-      <div :if={@resource && @kind == :test_plan}>
-        <p :if={@resource["description"]} class="mb-4 text-base-content/70">
-          {@resource["description"]}
-        </p>
-
-        <h3 class="font-semibold mb-2">Suites</h3>
-        <ul class="list">
-          <li :for={suite_path <- @resource["test_suites"]} class="list-row">
+        <ul :if={@recent_runs != []} class="divide-y divide-base-300">
+          <li :for={run <- @recent_runs}>
             <.link
-              patch={"/workspace/#{@workspace.id}/suites/#{suite_path}"}
-              class="link link-hover font-mono"
+              navigate={"/workspace/#{@workspace.id}/history/#{run.run_id}"}
+              class="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-base-200/60"
             >
-              {suite_path}
+              <MaestroWeb.RunComponents.status_icon status={run.status} />
+              <span class="min-w-0 flex-1 truncate font-mono text-[0.8125rem]">{run.run_id}</span>
+              <span class="hidden text-xs text-base-content/50 sm:inline">
+                {run.suite_count} {if run.suite_count == 1, do: "suite", else: "suites"}
+              </span>
+              <span
+                class="w-24 text-right text-xs text-base-content/50"
+                title={MaestroWeb.RunComponents.format_datetime(run.started_at)}
+              >
+                {MaestroWeb.RunComponents.relative_time(run.started_at)}
+              </span>
             </.link>
           </li>
         </ul>
+
+        <div
+          :if={@recent_runs == []}
+          class="flex flex-col items-center gap-3 px-6 py-10 text-center"
+        >
+          <span class="grid size-10 place-items-center rounded-full bg-base-200 text-base-content/40">
+            <.icon name="hero-play" class="size-5" />
+          </span>
+          <div>
+            <p class="text-sm font-medium">No runs yet</p>
+            <p class="mt-0.5 text-sm text-base-content/50">
+              Pick suites or test plans and start your first run.
+            </p>
+          </div>
+          <.button navigate={"/workspace/#{@workspace.id}/run"}>Go to Run</.button>
+        </div>
+      </section>
+
+      <section class="panel overflow-hidden">
+        <div class="panel-header">
+          <h2 class="text-sm font-semibold">Create</h2>
+        </div>
+        <ul class="p-1.5">
+          <li :for={{kind, _label, path} <- resource_tiles()}>
+            <.link
+              navigate={"/workspace/#{@workspace.id}/#{path}/new"}
+              class="flex items-center gap-3 rounded-field px-2.5 py-2 text-sm transition-colors hover:bg-base-200"
+            >
+              <.icon name={kind_icon(kind)} class="size-4 text-base-content/40" />
+              <span class="flex-1">New {String.downcase(kind_singular(kind))}</span>
+              <.icon name="hero-plus-mini" class="size-4 text-base-content/30" />
+            </.link>
+          </li>
+        </ul>
+      </section>
+    </div>
+  </div>
+
+  <%!-- Resource index --%>
+  <div :if={@live_action == :index} class="space-y-6">
+    <.header>
+      {kind_label(@kind)}
+      <:eyebrow>
+        <.icon name={kind_icon(@kind)} class="size-3.5" /> {@total} {if @total == 1,
+          do: String.downcase(kind_singular(@kind)),
+          else: String.downcase(kind_label(@kind))}
+      </:eyebrow>
+      <:subtitle>{kind_description(@kind)}</:subtitle>
+      <:actions>
+        <.button patch={"/workspace/#{@workspace.id}/#{@segment}/new"} variant="primary">
+          <.icon name="hero-plus-mini" class="size-4" />
+          New {String.downcase(kind_singular(@kind))}
+        </.button>
+      </:actions>
+    </.header>
+
+    <div class="panel overflow-hidden">
+      <div class="flex items-center gap-3 border-b border-base-300 px-4 py-2.5">
+        <form id="search-form" phx-change="search" class="w-full max-w-sm" onsubmit="return false">
+          <label class="input input-sm w-full">
+            <.icon name="hero-magnifying-glass-mini" class="size-4 text-base-content/40" />
+            <input
+              type="text"
+              name="query"
+              value={@query}
+              placeholder="Filter by path…"
+              phx-debounce="200"
+              autocomplete="off"
+            />
+          </label>
+        </form>
+      </div>
+
+      <div class="overflow-x-auto">
+        <.table id={@segment} rows={@streams.entries} row_item={fn {_id, entry} -> entry end}>
+          <:col :let={entry} label="Path">
+            <.link
+              patch={"/workspace/#{@workspace.id}/#{@segment}/#{entry.path}"}
+              class="kbd-path font-medium text-base-content hover:text-primary"
+            >
+              {entry.path}
+            </.link>
+          </:col>
+          <:col :let={entry} label="Name">
+            <span class="text-base-content/80">{entry.name}</span>
+          </:col>
+          <:col :let={entry} label="Description">
+            <span class="line-clamp-2 text-base-content/60">{entry.description}</span>
+          </:col>
+          <:col :let={entry} :if={@kind == :suite} label="Tags">
+            <div class="flex flex-wrap gap-1">
+              <.kind_badge :for={tag <- entry.tags} label={tag} />
+            </div>
+          </:col>
+        </.table>
+      </div>
+
+      <div
+        :if={@total == 0}
+        class="flex flex-col items-center gap-3 border-t border-base-300 px-6 py-12 text-center"
+      >
+        <span class="grid size-10 place-items-center rounded-full bg-base-200 text-base-content/40">
+          <.icon name={kind_icon(@kind)} class="size-5" />
+        </span>
+        <p :if={@query == ""} class="text-sm text-base-content/60">
+          No {kind_label(@kind)} found. Create one to get started.
+        </p>
+        <p :if={@query != ""} class="text-sm text-base-content/60">
+          No {kind_label(@kind)} found matching “{@query}”.
+        </p>
+      </div>
+
+      <div
+        :if={@total > @page_size}
+        class="flex items-center justify-between gap-2 border-t border-base-300 px-4 py-2.5"
+      >
+        <span class="text-xs text-base-content/60">
+          Page {@page} of {ceil(@total / @page_size)} ({@total} total)
+        </span>
+        <div class="flex gap-2">
+          <.button disabled={@page <= 1} phx-click="paginate" phx-value-page={@page - 1}>
+            <.icon name="hero-chevron-left-mini" class="size-4" /> Previous
+          </.button>
+          <.button
+            disabled={@page * @page_size >= @total}
+            phx-click="paginate"
+            phx-value-page={@page + 1}
+          >
+            Next <.icon name="hero-chevron-right-mini" class="size-4" />
+          </.button>
+        </div>
       </div>
     </div>
+  </div>
+
+  <%!-- Resource detail --%>
+  <div :if={@live_action == :show} class="space-y-6">
+    <.header>
+      {@resource["name"] || @path}
+      <:eyebrow>
+        <.icon name={kind_icon(@kind)} class="size-3.5" /> {kind_singular(@kind)}
+      </:eyebrow>
+      <:subtitle :if={@resource && @resource["name"] && @resource["name"] != @path}>
+        <span class="kbd-path">{@path}</span>
+      </:subtitle>
+      <:actions>
+        <.button
+          :if={!@error}
+          variant="danger"
+          phx-click="delete"
+          data-confirm={"Delete #{@path}? This cannot be undone."}
+        >
+          <.icon name="hero-trash-mini" class="size-4" /> Delete
+        </.button>
+        <.button :if={!@error} patch={"/workspace/#{@workspace.id}/#{@segment}/edit/#{@path}"}>
+          <.icon name="hero-pencil-square-mini" class="size-4" /> Edit
+        </.button>
+        <.button :if={!@error && @kind in [:suite, :test_plan]} phx-click="run" variant="primary">
+          <.icon name="hero-play-mini" class="size-4" /> Run
+        </.button>
+      </:actions>
+    </.header>
+
+    <div :if={@error} role="alert" class="alert alert-error alert-soft">
+      <.icon name="hero-exclamation-triangle" class="size-5" />
+      <span>
+        Could not load this {@kind |> Atom.to_string() |> String.replace("_", " ")}: {inspect(
+          @error
+        )}
+      </span>
+    </div>
+
+    <p
+      :if={@resource && @resource["description"]}
+      class="max-w-3xl text-[0.9375rem] leading-relaxed text-base-content/70"
+    >
+      {@resource["description"]}
+    </p>
+
+    <%!-- Suite --%>
+    <div :if={@resource && @kind == :suite} class="space-y-4">
+      <div :if={(@resource["tags"] || []) != []} class="flex flex-wrap items-center gap-1.5">
+        <.icon name="hero-tag-mini" class="size-4 text-base-content/40" />
+        <.kind_badge :for={tag <- @resource["tags"] || []} label={tag} />
+      </div>
+
+      <div class="flex items-baseline justify-between">
+        <h2 class="text-sm font-semibold">
+          Testcases
+          <span class="ml-1 font-normal text-base-content/50">
+            {length(@resource["testcases"])}
+          </span>
+        </h2>
+      </div>
+
+      <section :for={testcase <- @resource["testcases"]} class="panel overflow-hidden">
+        <div class="border-b border-base-300 px-4 py-3">
+          <div class="font-semibold">{testcase["name"] || testcase["id"]}</div>
+          <div class="mt-0.5 font-mono text-xs text-base-content/50">{testcase["id"]}</div>
+          <p :if={testcase["description"]} class="mt-1.5 text-sm text-base-content/70">
+            {testcase["description"]}
+          </p>
+        </div>
+        <div class="px-4 pt-4">
+          <div :for={{step, i} <- Enum.with_index(testcase["steps"])} class="group/step">
+            <.step_card step={step} index={i} />
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <%!-- Scenario --%>
+    <div :if={@resource && @kind == :scenario} class="space-y-4">
+      <section :if={default_dataset = @resource["default_dataset"]} class="panel p-4">
+        <h2 class="section-label mb-3">Default dataset</h2>
+        <span :if={is_binary(default_dataset)} class="kbd-path">{default_dataset}</span>
+        <div :if={is_map(default_dataset)} class="space-y-3">
+          <.dataset_body dataset={default_dataset} />
+        </div>
+      </section>
+
+      <section class="panel overflow-hidden">
+        <div class="panel-header">
+          <h2 class="text-sm font-semibold">
+            Steps
+            <span class="ml-1 font-normal text-base-content/50">{length(@resource["steps"])}</span>
+          </h2>
+        </div>
+        <div class="px-4 pt-4">
+          <div :for={{step, i} <- Enum.with_index(@resource["steps"])} class="group/step">
+            <.step_card step={step} index={i} />
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <%!-- Dataset --%>
+    <section :if={@resource && @kind == :dataset} class="panel space-y-3 p-4">
+      <.dataset_body dataset={@resource} />
+    </section>
+
+    <%!-- Template --%>
+    <div :if={@resource && @kind == :template} class="space-y-4">
+      <section class="panel p-4">
+        <h2 class="section-label mb-2">Clients</h2>
+        <div class="flex flex-wrap gap-1.5">
+          <.kind_badge
+            :for={client <- @resource["clients"] || []}
+            label={client}
+            class="font-mono"
+          />
+        </div>
+      </section>
+
+      <section class="panel overflow-hidden">
+        <div class="panel-header">
+          <h2 class="text-sm font-semibold">Payload</h2>
+          <span class="text-xs text-base-content/50">JSON</span>
+        </div>
+        <pre class="code-block rounded-none border-0">{Jason.encode!(@resource["payload"], pretty: true)}</pre>
+      </section>
+
+      <section :if={@resource["options"]} class="panel overflow-hidden">
+        <div class="panel-header">
+          <h2 class="text-sm font-semibold">Options</h2>
+          <span class="text-xs text-base-content/50">JSON</span>
+        </div>
+        <pre class="code-block rounded-none border-0">{Jason.encode!(@resource["options"], pretty: true)}</pre>
+      </section>
+    </div>
+
+    <%!-- Test plan --%>
+    <section :if={@resource && @kind == :test_plan} class="panel overflow-hidden">
+      <div class="panel-header">
+        <h2 class="text-sm font-semibold">
+          Suites
+          <span class="ml-1 font-normal text-base-content/50">
+            {length(@resource["test_suites"])}
+          </span>
+        </h2>
+      </div>
+      <ul class="divide-y divide-base-300">
+        <li :for={suite_path <- @resource["test_suites"]}>
+          <.link
+            patch={"/workspace/#{@workspace.id}/suites/#{suite_path}"}
+            class="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-base-200/60"
+          >
+            <.icon name="hero-beaker" class="size-4 text-base-content/40" />
+            <span class="kbd-path flex-1">{suite_path}</span>
+            <.icon name="hero-chevron-right-mini" class="size-4 text-base-content/30" />
+          </.link>
+        </li>
+      </ul>
+    </section>
   </div>
 </Layouts.app>

@@ -27,7 +27,8 @@ defmodule MaestroWeb.Components.FormFields do
         value={@data["id"]}
         phx-change="update-id"
         name="resource_id"
-        class="w-full input"
+        placeholder="e.g. checkout-smoke"
+        class="w-full input font-mono text-[0.8125rem]"
       />
     </div>
 
@@ -57,6 +58,8 @@ defmodule MaestroWeb.Components.FormFields do
       <textarea
         phx-change="update-description"
         name="description"
+        rows="2"
+        placeholder="What does this cover?"
         class="w-full textarea"
       >{@data["description"]}</textarea>
     </div>
@@ -80,26 +83,30 @@ defmodule MaestroWeb.Components.FormFields do
 
   def dataset_fields(assigns) do
     ~H"""
-    <div class="mb-4">
-      <div class="join">
+    <div class="mb-5">
+      <div class="inline-grid grid-cols-2 gap-1 rounded-field bg-base-200 p-1">
         <button
+          :for={
+            {mode, label, icon} <- [
+              {"data", "Single value", "hero-list-bullet-mini"},
+              {"rows", "Table of rows", "hero-table-cells-mini"}
+            ]
+          }
           type="button"
-          class={["join-item btn btn-sm", @dataset_mode == "data" && "btn-active"]}
+          class={[
+            "flex items-center justify-center gap-1.5 rounded-[calc(var(--radius-field)-2px)] px-3 py-1.5 text-sm font-medium transition",
+            if(@dataset_mode == mode,
+              do: "bg-base-100 shadow-xs",
+              else: "text-base-content/60 hover:text-base-content"
+            )
+          ]}
           phx-click="dataset-set-mode"
-          phx-value-mode="data"
+          phx-value-mode={mode}
         >
-          Single value
-        </button>
-        <button
-          type="button"
-          class={["join-item btn btn-sm", @dataset_mode == "rows" && "btn-active"]}
-          phx-click="dataset-set-mode"
-          phx-value-mode="rows"
-        >
-          Table of rows
+          <.icon name={icon} class="size-4" /> {label}
         </button>
       </div>
-      <p class="mt-1 text-sm text-base-content/70">
+      <p class="mt-2 text-xs text-base-content/60">
         <span :if={@dataset_mode == "data"}>
           One fixed set of key/value pairs, used as-is wherever this dataset is referenced.
         </span>
@@ -110,10 +117,12 @@ defmodule MaestroWeb.Components.FormFields do
       </p>
     </div>
 
-    <div :if={@dataset_mode == "data"} class="mb-6">
-      <div class="flex items-center justify-between mb-1">
+    <div :if={@dataset_mode == "data"}>
+      <div class="mb-2 flex items-center justify-between">
         <.field_label kind={:dataset} field_path={["data"]}>Data</.field_label>
-        <.button phx-click="dataset-add-data-field">Add field</.button>
+        <.button phx-click="dataset-add-data-field">
+          <.icon name="hero-plus-mini" class="size-4" /> Add field
+        </.button>
       </div>
 
       <div :for={{{key, value}, index} <- Enum.with_index(@data_pairs)} class="flex gap-2 mb-2">
@@ -123,7 +132,7 @@ defmodule MaestroWeb.Components.FormFields do
           placeholder="key"
           phx-change="dataset-update-data-field-key"
           name={"data_pairs[#{index}][key]"}
-          class="input flex-1 font-mono"
+          class="input flex-1 font-mono text-[0.8125rem]"
         />
         <input
           type="text"
@@ -133,12 +142,21 @@ defmodule MaestroWeb.Components.FormFields do
           name={"data_pairs[#{index}][value]"}
           class="input flex-1"
         />
-        <.button phx-click="dataset-remove-data-field" phx-value-index={index}>
-          <.icon name="hero-x-mark" />
+        <.button
+          variant="ghost"
+          class="btn-square text-base-content/40 hover:text-error"
+          phx-click="dataset-remove-data-field"
+          phx-value-index={index}
+          aria-label="Remove field"
+        >
+          <.icon name="hero-trash-mini" class="size-4" />
         </.button>
       </div>
 
-      <p :if={@data_pairs == []} class="text-sm text-base-content/70">
+      <p
+        :if={@data_pairs == []}
+        class="rounded-field border border-dashed border-base-300 px-4 py-6 text-center text-sm text-base-content/60"
+      >
         No fields yet. Click "Add field" to add a key/value pair (e.g.
         <span class="font-mono">username</span>
         / <span class="font-mono">alice</span>).
@@ -146,15 +164,19 @@ defmodule MaestroWeb.Components.FormFields do
     </div>
 
     <div :if={@dataset_mode == "rows"}>
-      <div class="flex items-center justify-between mb-1">
+      <div class="mb-2 flex items-center justify-between">
         <.field_label kind={:dataset} field_path={["rows"]}>Rows</.field_label>
         <div class="flex gap-2">
-          <.button phx-click="dataset-add-column">Add column</.button>
-          <.button phx-click="dataset-add-row" disabled={@row_columns == []}>Add row</.button>
+          <.button phx-click="dataset-add-column">
+            <.icon name="hero-view-columns-mini" class="size-4" /> Add column
+          </.button>
+          <.button phx-click="dataset-add-row" disabled={@row_columns == []}>
+            <.icon name="hero-plus-mini" class="size-4" /> Add row
+          </.button>
         </div>
       </div>
 
-      <div :if={@row_columns != []} class="overflow-x-auto">
+      <div :if={@row_columns != []} class="overflow-x-auto rounded-field border border-base-300">
         <table class="table table-sm">
           <thead>
             <tr>
@@ -168,8 +190,15 @@ defmodule MaestroWeb.Components.FormFields do
                     name={"row_columns[#{col_index}]"}
                     class="input input-sm font-mono"
                   />
-                  <.button phx-click="dataset-remove-column" phx-value-index={col_index}>
-                    <.icon name="hero-x-mark" class="size-3" />
+                  <.button
+                    variant="ghost"
+                    size="xs"
+                    class="btn-square text-base-content/40 hover:text-error"
+                    phx-click="dataset-remove-column"
+                    phx-value-index={col_index}
+                    aria-label="Remove column"
+                  >
+                    <.icon name="hero-x-mark-mini" class="size-3.5" />
                   </.button>
                 </div>
               </th>
@@ -188,8 +217,15 @@ defmodule MaestroWeb.Components.FormFields do
                 />
               </td>
               <td>
-                <.button phx-click="dataset-remove-row" phx-value-index={row_index}>
-                  <.icon name="hero-x-mark" class="size-3" />
+                <.button
+                  variant="ghost"
+                  size="xs"
+                  class="btn-square text-base-content/40 hover:text-error"
+                  phx-click="dataset-remove-row"
+                  phx-value-index={row_index}
+                  aria-label="Remove row"
+                >
+                  <.icon name="hero-trash-mini" class="size-3.5" />
                 </.button>
               </td>
             </tr>
@@ -197,7 +233,10 @@ defmodule MaestroWeb.Components.FormFields do
         </table>
       </div>
 
-      <p :if={@row_columns == []} class="text-sm text-base-content/70">
+      <p
+        :if={@row_columns == []}
+        class="rounded-field border border-dashed border-base-300 px-4 py-6 text-center text-sm text-base-content/60"
+      >
         No columns yet. Click "Add column" to name your first column (e.g. <span class="font-mono">username</span>), then "Add row" to start filling in values.
       </p>
     </div>
@@ -218,14 +257,23 @@ defmodule MaestroWeb.Components.FormFields do
     ~H"""
     <div class="mb-4">
       <.field_label kind={:template} field_path={["clients"]}>Clients</.field_label>
-      <div class="flex flex-wrap gap-2 mt-1">
-        <label :for={client <- @client_names} class="label cursor-pointer gap-1">
+      <div class="flex flex-wrap gap-2">
+        <label
+          :for={client <- @client_names}
+          class={[
+            "flex cursor-pointer items-center gap-2 rounded-field border px-2.5 py-1.5 font-mono text-[0.8125rem] transition-colors",
+            if(client in (@data["clients"] || []),
+              do: "border-primary/40 bg-primary/5",
+              else: "border-base-300 hover:bg-base-200"
+            )
+          ]}
+        >
           <input
             type="checkbox"
             checked={client in (@data["clients"] || [])}
             phx-click="template-toggle-client"
             phx-value-client={client}
-            class="checkbox checkbox-sm"
+            class="checkbox checkbox-xs checkbox-primary"
           />
           {client}
         </label>
@@ -240,11 +288,14 @@ defmodule MaestroWeb.Components.FormFields do
       <textarea
         phx-change="template-update-payload"
         name="payload"
-        class={["w-full textarea font-mono", @payload_error && "textarea-error"]}
-        rows="8"
+        class={[
+          "w-full textarea font-mono text-[0.8125rem] leading-relaxed",
+          @payload_error && "textarea-error"
+        ]}
+        rows="10"
       >{@payload_raw}</textarea>
-      <p :if={@payload_error} class="mt-1.5 flex gap-2 items-center text-sm text-error">
-        <.icon name="hero-exclamation-circle" class="size-5" />{@payload_error}
+      <p :if={@payload_error} class="mt-1.5 flex gap-1.5 items-center text-xs text-error">
+        <.icon name="hero-exclamation-circle-mini" class="size-4" />{@payload_error}
       </p>
     </div>
 
@@ -253,11 +304,14 @@ defmodule MaestroWeb.Components.FormFields do
       <textarea
         phx-change="template-update-options"
         name="options"
-        class={["w-full textarea font-mono", @options_error && "textarea-error"]}
+        class={[
+          "w-full textarea font-mono text-[0.8125rem] leading-relaxed",
+          @options_error && "textarea-error"
+        ]}
         rows="6"
       >{@options_raw}</textarea>
-      <p :if={@options_error} class="mt-1.5 flex gap-2 items-center text-sm text-error">
-        <.icon name="hero-exclamation-circle" class="size-5" />{@options_error}
+      <p :if={@options_error} class="mt-1.5 flex gap-1.5 items-center text-xs text-error">
+        <.icon name="hero-exclamation-circle-mini" class="size-4" />{@options_error}
       </p>
     </div>
     """
@@ -272,27 +326,34 @@ defmodule MaestroWeb.Components.FormFields do
 
   def scenario_fields(assigns) do
     ~H"""
-    <div class="fieldset mb-4">
-      <.field_label kind={:scenario} field_path={["default_dataset"]}>Default dataset</.field_label>
-      <.live_component
-        module={MaestroWeb.Components.ReferencePicker}
-        id="default-dataset-picker"
+    <section class="panel">
+      <div class="panel-header">
+        <h2 class="text-sm font-semibold">Default dataset</h2>
+      </div>
+      <div class="p-4">
+        <.field_label kind={:scenario} field_path={["default_dataset"]}>Dataset</.field_label>
+        <.live_component
+          module={MaestroWeb.Components.ReferencePicker}
+          id="default-dataset-picker"
+          workspace={@workspace}
+          kind={:dataset}
+          path={["default_dataset"]}
+          value={@data["default_dataset"] || ""}
+        />
+      </div>
+    </section>
+
+    <section class="panel p-4">
+      <.step_list
         workspace={@workspace}
-        kind={:dataset}
-        path={["default_dataset"]}
-        value={@data["default_dataset"] || ""}
+        steps={@data["steps"] || []}
+        testcase_index={nil}
+        client_names={@client_names}
+        expected_raw={@expected_raw}
       />
-    </div>
 
-    <.step_list
-      workspace={@workspace}
-      steps={@data["steps"] || []}
-      testcase_index={nil}
-      client_names={@client_names}
-      expected_raw={@expected_raw}
-    />
-
-    <p :if={msg = Form.error_for(@errors, "#/steps")} class="mt-2 text-sm text-error">{msg}</p>
+      <p :if={msg = Form.error_for(@errors, "#/steps")} class="mt-2 text-sm text-error">{msg}</p>
+    </section>
     """
   end
 
@@ -305,63 +366,89 @@ defmodule MaestroWeb.Components.FormFields do
 
   def suite_fields(assigns) do
     ~H"""
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="font-semibold">Testcases</h3>
-      <.button phx-click="suite-add-testcase">Add testcase</.button>
+    <div class="flex items-center justify-between">
+      <h2 class="text-sm font-semibold">
+        Testcases
+        <span class="ml-1 font-normal text-base-content/50">
+          {length(@data["testcases"] || [])}
+        </span>
+      </h2>
+      <.button phx-click="suite-add-testcase">
+        <.icon name="hero-plus-mini" class="size-4" /> Add testcase
+      </.button>
     </div>
 
-    <div
+    <section
       :for={{testcase, tc_index} <- Enum.with_index(@data["testcases"] || [])}
-      class="card bg-base-200 p-4 mb-4"
+      class="panel"
     >
-      <div class="flex items-center justify-between mb-2">
-        <span class="font-mono text-xs text-base-content/50">testcase #{tc_index + 1}</span>
-        <.button phx-click="suite-remove-testcase" phx-value-index={tc_index}>
-          <.icon name="hero-x-mark" class="size-3.5" /> Remove testcase
+      <div class="panel-header">
+        <span class="flex items-center gap-2">
+          <span class="grid size-6 place-items-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+            {tc_index + 1}
+          </span>
+          <span class="font-mono text-xs text-base-content/50">testcase #{tc_index + 1}</span>
+        </span>
+        <.button
+          variant="ghost"
+          size="xs"
+          class="text-base-content/50 hover:text-error"
+          phx-click="suite-remove-testcase"
+          phx-value-index={tc_index}
+        >
+          <.icon name="hero-trash-mini" class="size-3.5" /> Remove testcase
         </.button>
       </div>
 
-      <div class="fieldset mb-2">
-        <span class="label mb-1">Id</span>
-        <input
-          type="text"
-          value={testcase["id"]}
-          phx-change="suite-update-testcase-field"
-          name={"testcases[#{tc_index}][id]"}
-          class="w-full input"
+      <div class="space-y-4 p-4">
+        <div class="grid gap-x-4 sm:grid-cols-2">
+          <div class="fieldset">
+            <span class="label mb-1.5 text-xs font-medium text-base-content/80">Id</span>
+            <input
+              type="text"
+              value={testcase["id"]}
+              phx-change="suite-update-testcase-field"
+              name={"testcases[#{tc_index}][id]"}
+              placeholder="e.g. login-succeeds"
+              class="w-full input font-mono text-[0.8125rem]"
+            />
+          </div>
+
+          <div class="fieldset">
+            <span class="label mb-1.5 text-xs font-medium text-base-content/80">Name</span>
+            <input
+              type="text"
+              value={testcase["name"]}
+              phx-change="suite-update-testcase-field"
+              name={"testcases[#{tc_index}][name]"}
+              class="w-full input"
+            />
+          </div>
+        </div>
+
+        <.step_list
+          workspace={@workspace}
+          steps={testcase["steps"] || []}
+          testcase_index={tc_index}
+          client_names={@client_names}
+          expected_raw={@expected_raw}
         />
+
+        <p
+          :if={msg = Form.error_for(@errors, "#/testcases/#{tc_index}")}
+          class="text-sm text-error"
+        >
+          {msg}
+        </p>
       </div>
+    </section>
 
-      <div class="fieldset mb-2">
-        <span class="label mb-1">Name</span>
-        <input
-          type="text"
-          value={testcase["name"]}
-          phx-change="suite-update-testcase-field"
-          name={"testcases[#{tc_index}][name]"}
-          class="w-full input"
-        />
-      </div>
-
-      <.step_list
-        workspace={@workspace}
-        steps={testcase["steps"] || []}
-        testcase_index={tc_index}
-        client_names={@client_names}
-        expected_raw={@expected_raw}
-      />
-
-      <p
-        :if={msg = Form.error_for(@errors, "#/testcases/#{tc_index}")}
-        class="mt-2 text-sm text-error"
-      >
-        {msg}
-      </p>
-    </div>
-
-    <p :if={(@data["testcases"] || []) == []} class="text-sm text-base-content/70">
+    <div
+      :if={(@data["testcases"] || []) == []}
+      class="rounded-box border border-dashed border-base-300 px-6 py-10 text-center text-sm text-base-content/60"
+    >
       No testcases yet.
-    </p>
+    </div>
     """
   end
 
@@ -384,20 +471,20 @@ defmodule MaestroWeb.Components.FormFields do
   def step_list(assigns) do
     ~H"""
     <div>
-      <div class="flex items-center justify-between mb-1">
-        <span class="label">Steps</span>
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <span class="section-label">Steps · {length(@steps)}</span>
         <div class="flex gap-2">
           <.button
             phx-click="step-add-template"
             phx-value-testcase_index={@testcase_index}
           >
-            Add step
+            <.icon name="hero-plus-mini" class="size-4" /> Add step
           </.button>
           <.button
             phx-click="step-add-scenario-call"
             phx-value-testcase_index={@testcase_index}
           >
-            Add scenario call
+            <.icon name="hero-queue-list-mini" class="size-4" /> Add scenario call
           </.button>
         </div>
       </div>
@@ -413,7 +500,12 @@ defmodule MaestroWeb.Components.FormFields do
         expected_raw={@expected_raw}
       />
 
-      <p :if={@steps == []} class="text-sm text-base-content/70">No steps yet.</p>
+      <p
+        :if={@steps == []}
+        class="rounded-field border border-dashed border-base-300 px-4 py-5 text-center text-sm text-base-content/60"
+      >
+        No steps yet.
+      </p>
     </div>
     """
   end
@@ -431,119 +523,159 @@ defmodule MaestroWeb.Components.FormFields do
     assigns = assign(assigns, :tc, step_tc(assigns.testcase_index))
 
     ~H"""
-    <div class="card bg-base-100 border border-base-300 p-3 mb-2">
-      <div class="flex items-center gap-2 mb-2">
-        <span class="font-mono text-xs text-base-content/50">#{@step_index + 1}</span>
+    <div class="mb-2 overflow-hidden rounded-field border border-base-300 bg-base-100">
+      <div class="flex flex-wrap items-center gap-2 border-b border-base-300 bg-base-200/50 px-3 py-2">
+        <span class={[
+          "grid size-6 shrink-0 place-items-center rounded-full border text-[0.6875rem] font-semibold",
+          if(Map.has_key?(@step, "scenario"),
+            do: "border-accent/30 bg-accent/10 text-accent",
+            else: "border-base-300 bg-base-100 text-base-content/60"
+          )
+        ]}>
+          {@step_index + 1}
+        </span>
 
         <input
           type="text"
           value={@step["name"]}
-          placeholder="name (optional)"
+          placeholder="Step name (optional)"
           phx-change="step-update-field"
           name={"steps[#{@tc}][#{@step_index}][name]"}
-          class="input input-sm flex-1"
+          class="input input-sm min-w-40 flex-1"
         />
 
-        <.button
-          phx-click="step-move-up"
-          phx-value-testcase_index={@testcase_index}
-          phx-value-step_index={@step_index}
-          disabled={@step_index == 0}
-        >
-          <.icon name="hero-chevron-up" class="size-3.5" />
-        </.button>
-        <.button
-          phx-click="step-move-down"
-          phx-value-testcase_index={@testcase_index}
-          phx-value-step_index={@step_index}
-          disabled={@step_index == @step_count - 1}
-        >
-          <.icon name="hero-chevron-down" class="size-3.5" />
-        </.button>
-        <.button
-          phx-click="step-toggle-kind"
-          phx-value-testcase_index={@testcase_index}
-          phx-value-step_index={@step_index}
-        >
-          Switch to {if Map.has_key?(@step, "scenario"), do: "template step", else: "scenario call"}
-        </.button>
-        <.button
-          phx-click="step-remove"
-          phx-value-testcase_index={@testcase_index}
-          phx-value-step_index={@step_index}
-        >
-          <.icon name="hero-x-mark" class="size-3.5" />
-        </.button>
-      </div>
+        <span class="text-xs text-base-content/50">
+          {if Map.has_key?(@step, "scenario"), do: "Scenario call", else: "Template step"}
+        </span>
 
-      <div :if={Map.has_key?(@step, "scenario")} class="mb-2">
-        <span class="label mb-1">Scenario</span>
-        <.live_component
-          module={MaestroWeb.Components.ReferencePicker}
-          id={"scenario-picker-#{@tc}-#{@step_index}"}
-          workspace={@workspace}
-          kind={:scenario}
-          path={step_path(@testcase_index, @step_index, "scenario")}
-          value={@step["scenario"]}
-        />
-
-        <span class="label mb-1 mt-2">Dataset (optional)</span>
-        <.live_component
-          module={MaestroWeb.Components.ReferencePicker}
-          id={"scenario-call-dataset-picker-#{@tc}-#{@step_index}"}
-          workspace={@workspace}
-          kind={:dataset}
-          path={step_path(@testcase_index, @step_index, "dataset")}
-          value={@step["dataset"] || ""}
-        />
-      </div>
-
-      <div :if={!Map.has_key?(@step, "scenario")} class="mb-2">
-        <span class="label mb-1">Client</span>
-        <select
-          phx-change="step-update-field"
-          name={"steps[#{@tc}][#{@step_index}][client]"}
-          class="select select-sm w-full mb-2"
-        >
-          <option value="">(choose a client)</option>
-          <option :for={client <- @client_names} value={client} selected={client == @step["client"]}>
-            {client}
-          </option>
-        </select>
-
-        <span class="label mb-1">Template</span>
-        <.live_component
-          module={MaestroWeb.Components.ReferencePicker}
-          id={"template-picker-#{@tc}-#{@step_index}"}
-          workspace={@workspace}
-          kind={:template}
-          path={step_path(@testcase_index, @step_index, "template")}
-          value={@step["template"] || ""}
-        />
-
-        <div :if={!is_nil(@testcase_index)}>
-          <span class="label mb-1 mt-2">Dataset</span>
-          <.live_component
-            module={MaestroWeb.Components.ReferencePicker}
-            id={"dataset-picker-#{@tc}-#{@step_index}"}
-            workspace={@workspace}
-            kind={:dataset}
-            path={step_path(@testcase_index, @step_index, "dataset")}
-            value={@step["dataset"] || ""}
-          />
+        <div class="flex items-center">
+          <.button
+            variant="ghost"
+            class="btn-square"
+            phx-click="step-move-up"
+            phx-value-testcase_index={@testcase_index}
+            phx-value-step_index={@step_index}
+            disabled={@step_index == 0}
+            aria-label="Move step up"
+          >
+            <.icon name="hero-arrow-up-mini" class="size-4" />
+          </.button>
+          <.button
+            variant="ghost"
+            class="btn-square"
+            phx-click="step-move-down"
+            phx-value-testcase_index={@testcase_index}
+            phx-value-step_index={@step_index}
+            disabled={@step_index == @step_count - 1}
+            aria-label="Move step down"
+          >
+            <.icon name="hero-arrow-down-mini" class="size-4" />
+          </.button>
+          <.button
+            variant="ghost"
+            class="text-xs"
+            phx-click="step-toggle-kind"
+            phx-value-testcase_index={@testcase_index}
+            phx-value-step_index={@step_index}
+            title="Change step type"
+          >
+            <.icon name="hero-arrows-right-left-mini" class="size-4" />
+            Switch to {if Map.has_key?(@step, "scenario"), do: "template step", else: "scenario call"}
+          </.button>
+          <.button
+            variant="ghost"
+            class="btn-square text-base-content/40 hover:text-error"
+            phx-click="step-remove"
+            phx-value-testcase_index={@testcase_index}
+            phx-value-step_index={@step_index}
+            aria-label="Remove step"
+          >
+            <.icon name="hero-trash-mini" class="size-4" />
+          </.button>
         </div>
-        <p :if={is_nil(@testcase_index)} class="text-xs text-base-content/70 mt-2">
-          A scenario's steps render against the scenario's single resolved dataset there's no
-          per-step dataset here (unlike a suite's steps).
-        </p>
       </div>
 
-      <.assert_list
-        asserts={@step["assert"] || []}
-        testcase_index={@testcase_index}
-        step_index={@step_index}
-        expected_raw={@expected_raw}
-      />
+      <div class="space-y-3 p-3">
+        <div :if={Map.has_key?(@step, "scenario")} class="grid gap-x-4 gap-y-3 md:grid-cols-2">
+          <div>
+            <span class="label mb-1.5 text-xs font-medium text-base-content/80">Scenario</span>
+            <.live_component
+              module={MaestroWeb.Components.ReferencePicker}
+              id={"scenario-picker-#{@tc}-#{@step_index}"}
+              workspace={@workspace}
+              kind={:scenario}
+              path={step_path(@testcase_index, @step_index, "scenario")}
+              value={@step["scenario"]}
+            />
+          </div>
+          <div>
+            <span class="label mb-1.5 text-xs font-medium text-base-content/80">Dataset (optional)</span>
+            <.live_component
+              module={MaestroWeb.Components.ReferencePicker}
+              id={"scenario-call-dataset-picker-#{@tc}-#{@step_index}"}
+              workspace={@workspace}
+              kind={:dataset}
+              path={step_path(@testcase_index, @step_index, "dataset")}
+              value={@step["dataset"] || ""}
+            />
+          </div>
+        </div>
+
+        <div :if={!Map.has_key?(@step, "scenario")} class="grid gap-x-4 gap-y-3 md:grid-cols-2">
+          <div>
+            <span class="label mb-1.5 text-xs font-medium text-base-content/80">Client</span>
+            <select
+              phx-change="step-update-field"
+              name={"steps[#{@tc}][#{@step_index}][client]"}
+              class="select select-sm w-full font-mono"
+            >
+              <option value="">(choose a client)</option>
+              <option
+                :for={client <- @client_names}
+                value={client}
+                selected={client == @step["client"]}
+              >
+                {client}
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <span class="label mb-1.5 text-xs font-medium text-base-content/80">Template</span>
+            <.live_component
+              module={MaestroWeb.Components.ReferencePicker}
+              id={"template-picker-#{@tc}-#{@step_index}"}
+              workspace={@workspace}
+              kind={:template}
+              path={step_path(@testcase_index, @step_index, "template")}
+              value={@step["template"] || ""}
+            />
+          </div>
+
+          <div :if={!is_nil(@testcase_index)} class="md:col-span-2">
+            <span class="label mb-1.5 text-xs font-medium text-base-content/80">Dataset</span>
+            <.live_component
+              module={MaestroWeb.Components.ReferencePicker}
+              id={"dataset-picker-#{@tc}-#{@step_index}"}
+              workspace={@workspace}
+              kind={:dataset}
+              path={step_path(@testcase_index, @step_index, "dataset")}
+              value={@step["dataset"] || ""}
+            />
+          </div>
+          <p :if={is_nil(@testcase_index)} class="text-xs text-base-content/60 md:col-span-2">
+            A scenario's steps render against the scenario's single resolved dataset there's no
+            per-step dataset here (unlike a suite's steps).
+          </p>
+        </div>
+
+        <.assert_list
+          asserts={@step["assert"] || []}
+          testcase_index={@testcase_index}
+          step_index={@step_index}
+          expected_raw={@expected_raw}
+        />
+      </div>
     </div>
     """
   end
@@ -571,23 +703,24 @@ defmodule MaestroWeb.Components.FormFields do
     assigns = assign(assigns, :tc, step_tc(assigns.testcase_index))
 
     ~H"""
-    <div class="mt-2">
-      <div class="flex items-center justify-between mb-1">
-        <span class="label">Asserts</span>
+    <div class="border-t border-base-300 pt-3">
+      <div class="mb-2 flex items-center justify-between">
+        <span class="section-label">Asserts · {length(@asserts)}</span>
         <.button
+          size="xs"
           phx-click="assert-add"
           phx-value-testcase_index={@testcase_index}
           phx-value-step_index={@step_index}
         >
-          Add assert
+          <.icon name="hero-plus-mini" class="size-3.5" /> Add assert
         </.button>
       </div>
 
       <div
         :for={{assert, assert_index} <- Enum.with_index(@asserts)}
-        class="bg-base-200 rounded p-2 mb-1"
+        class="mb-2 rounded-field border border-base-300 bg-base-200/50 p-2.5"
       >
-        <div class="flex gap-2 mb-1">
+        <div class="mb-2 flex gap-2">
           <input
             type="text"
             value={assert["matcher"] || "json_match"}
@@ -605,12 +738,15 @@ defmodule MaestroWeb.Components.FormFields do
             class="input input-sm flex-1 font-mono"
           />
           <.button
+            variant="ghost"
+            class="btn-square text-base-content/40 hover:text-error"
             phx-click="assert-remove"
             phx-value-testcase_index={@testcase_index}
             phx-value-step_index={@step_index}
             phx-value-assert_index={assert_index}
+            aria-label="Remove assert"
           >
-            <.icon name="hero-x-mark" class="size-3.5" />
+            <.icon name="hero-trash-mini" class="size-4" />
           </.button>
         </div>
 
@@ -622,7 +758,9 @@ defmodule MaestroWeb.Components.FormFields do
             assert_index,
             assert["expected"]
           ) %>
-        <span class="label text-xs mb-1">Expected (JSON)</span>
+        <span class="label mb-1 text-[0.6875rem] font-medium text-base-content/60">
+          Expected (JSON)
+        </span>
         <textarea
           phx-change="assert-update-expected"
           name={"asserts[#{@tc}][#{@step_index}][#{assert_index}][expected]"}
@@ -634,7 +772,7 @@ defmodule MaestroWeb.Components.FormFields do
         </p>
       </div>
 
-      <p :if={@asserts == []} class="text-sm text-base-content/70">No asserts yet.</p>
+      <p :if={@asserts == []} class="text-xs text-base-content/50">No asserts yet.</p>
     </div>
     """
   end
@@ -646,23 +784,36 @@ defmodule MaestroWeb.Components.FormFields do
   def test_plan_fields(assigns) do
     ~H"""
     <div>
-      <.field_label kind={:test_plan} field_path={["test_suites"]}>Suites</.field_label>
+      <div class="px-2 pt-1">
+        <.field_label kind={:test_plan} field_path={["test_suites"]}>
+          Suites in this plan
+        </.field_label>
+      </div>
 
-      <div class="flex flex-col gap-1 mt-1">
-        <label :for={entry <- @suite_entries} class="label cursor-pointer justify-start gap-2">
+      <div class="flex max-h-96 flex-col gap-0.5 overflow-y-auto">
+        <label
+          :for={entry <- @suite_entries}
+          class={[
+            "flex cursor-pointer items-center gap-3 rounded-field px-2 py-2 transition-colors",
+            if(entry.path in (@data["test_suites"] || []),
+              do: "bg-primary/5 hover:bg-primary/10",
+              else: "hover:bg-base-200"
+            )
+          ]}
+        >
           <input
             type="checkbox"
             checked={entry.path in (@data["test_suites"] || [])}
             phx-click="test-plan-toggle-suite"
             phx-value-path={entry.path}
-            class="checkbox checkbox-sm"
+            class="checkbox checkbox-sm checkbox-primary"
           />
-          <span class="font-mono text-sm">{entry.path}</span>
-          <span :if={entry.name} class="text-sm text-base-content/70">({entry.name})</span>
+          <span class="font-mono text-[0.8125rem]">{entry.path}</span>
+          <span :if={entry.name} class="truncate text-sm text-base-content/50">{entry.name}</span>
         </label>
       </div>
 
-      <p :if={@suite_entries == []} class="text-sm text-base-content/70 mt-1">
+      <p :if={@suite_entries == []} class="px-2 py-4 text-sm text-base-content/60">
         No suites in this workspace yet.
       </p>
     </div>

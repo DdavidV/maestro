@@ -1,4 +1,4 @@
-<Layouts.app flash={@flash} workspace={@workspace}>
+<Layouts.app flash={@flash} workspace={@workspace} active={:run}>
   <:drawer>
     <.workspace_drawer workspace={@workspace} />
   </:drawer>
@@ -8,153 +8,96 @@
   </:breadcrumbs>
 
   <.header>
-    Run
-    <:subtitle>{@workspace.name}</:subtitle>
-    <:actions>
-      <.button phx-click="run-selected" variant="primary" disabled={MapSet.size(@selected) == 0}>
-        Run selected ({MapSet.size(@selected)})
-      </.button>
-    </:actions>
+    Start a run
+    <:subtitle>
+      Pick any mix of suites and test plans. They run together as a single run.
+    </:subtitle>
   </.header>
 
-  <div :if={MapSet.size(@selected) > 0} class="card bg-base-200 p-4 mb-4 shrink-0">
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="font-semibold text-sm">Selected ({MapSet.size(@selected)})</h3>
-      <.button phx-click="clear-selected">Clear</.button>
+  <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+    <div class="space-y-6 lg:col-span-2">
+      <.picker_section
+        kind={:suite}
+        title="Suites"
+        query={@suite_query}
+        paths={@suite_paths}
+        page={@suite_page}
+        total={@suite_total}
+        page_size={@suite_page_size}
+        selected={@selected}
+      />
+      <.picker_section
+        kind={:test_plan}
+        title="Test Plans"
+        query={@test_plan_query}
+        paths={@test_plan_paths}
+        page={@test_plan_page}
+        total={@test_plan_total}
+        page_size={@test_plan_page_size}
+        selected={@selected}
+      />
     </div>
-    <ul class="flex flex-wrap gap-2">
-      <li :for={{kind, path} <- @selected}>
-        <button
-          type="button"
-          phx-click="toggle-selected"
-          phx-value-kind={kind}
-          phx-value-path={path}
-          class="badge badge-soft gap-1"
-        >
-          <span class="text-xs opacity-70">{kind}</span>
-          <span class="font-mono">{path}</span>
-          <.icon name="hero-x-mark" class="size-3" />
-        </button>
-      </li>
-    </ul>
-  </div>
 
-  <div
-    class="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0"
-    style="height: calc(100vh - 20rem)"
-  >
-    <div class="card bg-base-100 border border-base-300 flex flex-col min-h-0">
-      <div class="p-4 pb-2 shrink-0">
-        <h3 class="font-semibold mb-2">Suites</h3>
-        <form id="suite-search-form" phx-change="search-suite">
-          <input
-            type="text"
-            name="query"
-            value={@suite_query}
-            placeholder="Search suites by path..."
-            class="input input-sm w-full"
-            phx-debounce="200"
-          />
-        </form>
-      </div>
-
-      <div class="flex-1 min-h-0 overflow-y-auto px-4">
-        <ul class="menu p-0 gap-0.5">
-          <li :for={path <- @suite_paths}>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={MapSet.member?(@selected, {:suite, path})}
-                phx-click="toggle-selected"
-                phx-value-kind="suite"
-                phx-value-path={path}
-                class="checkbox checkbox-sm"
-              />
-              <span class="font-mono text-sm">{path}</span>
-            </label>
-          </li>
-          <li :if={@suite_paths == []}>
-            <span class="text-sm text-base-content/70">No suites found.</span>
-          </li>
-        </ul>
-      </div>
-
-      <div class="flex items-center gap-2 p-4 pt-2 border-t border-base-300 shrink-0">
+    <aside class="panel overflow-hidden lg:sticky lg:top-0">
+      <div class="panel-header">
+        <h3 class="text-sm font-semibold">Selected ({MapSet.size(@selected)})</h3>
         <.button
-          disabled={@suite_page <= 1}
-          phx-click="paginate-suite"
-          phx-value-page={@suite_page - 1}
+          :if={MapSet.size(@selected) > 0}
+          variant="ghost"
+          size="xs"
+          phx-click="clear-selected"
         >
-          Previous
+          Clear
         </.button>
-        <span class="text-sm text-base-content/70">
-          Page {@suite_page} of {max(ceil(@suite_total / @suite_page_size), 1)} ({@suite_total} total)
+      </div>
+
+      <ul :if={MapSet.size(@selected) > 0} class="max-h-80 space-y-1 overflow-y-auto p-2">
+        <li :for={{kind, path} <- @selected}>
+          <div class="group flex items-center gap-2 rounded-field px-2 py-1.5 hover:bg-base-200">
+            <.icon name={kind_icon(kind)} class="size-4 shrink-0 text-base-content/40" />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate kbd-path">{path}</span>
+              <span class="block text-[0.6875rem] text-base-content/50">
+                {kind_singular(kind)}
+              </span>
+            </span>
+            <button
+              type="button"
+              phx-click="toggle-selected"
+              phx-value-kind={kind}
+              phx-value-path={path}
+              class="btn btn-ghost btn-xs btn-square text-base-content/40 hover:text-base-content"
+              aria-label={"Remove #{path}"}
+            >
+              <.icon name="hero-x-mark-mini" class="size-4" />
+            </button>
+          </div>
+        </li>
+      </ul>
+
+      <div
+        :if={MapSet.size(@selected) == 0}
+        class="flex flex-col items-center gap-2 px-6 py-8 text-center"
+      >
+        <span class="grid size-9 place-items-center rounded-full bg-base-200 text-base-content/40">
+          <.icon name="hero-check-circle" class="size-5" />
         </span>
-        <.button
-          disabled={@suite_page * @suite_page_size >= @suite_total}
-          phx-click="paginate-suite"
-          phx-value-page={@suite_page + 1}
-        >
-          Next
-        </.button>
-      </div>
-    </div>
-
-    <div class="card bg-base-100 border border-base-300 flex flex-col min-h-0">
-      <div class="p-4 pb-2 shrink-0">
-        <h3 class="font-semibold mb-2">Test Plans</h3>
-        <form id="test_plan-search-form" phx-change="search-test_plan">
-          <input
-            type="text"
-            name="query"
-            value={@test_plan_query}
-            placeholder="Search test plans by path..."
-            class="input input-sm w-full"
-            phx-debounce="200"
-          />
-        </form>
+        <p class="text-sm text-base-content/60">
+          Tick suites or test plans to add them to this run.
+        </p>
       </div>
 
-      <div class="flex-1 min-h-0 overflow-y-auto px-4">
-        <ul class="menu p-0 gap-0.5">
-          <li :for={path <- @test_plan_paths}>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={MapSet.member?(@selected, {:test_plan, path})}
-                phx-click="toggle-selected"
-                phx-value-kind="test_plan"
-                phx-value-path={path}
-                class="checkbox checkbox-sm"
-              />
-              <span class="font-mono text-sm">{path}</span>
-            </label>
-          </li>
-          <li :if={@test_plan_paths == []}>
-            <span class="text-sm text-base-content/70">No test plans found.</span>
-          </li>
-        </ul>
-      </div>
-
-      <div class="flex items-center gap-2 p-4 pt-2 border-t border-base-300 shrink-0">
+      <div class="border-t border-base-300 p-3">
         <.button
-          disabled={@test_plan_page <= 1}
-          phx-click="paginate-test_plan"
-          phx-value-page={@test_plan_page - 1}
+          phx-click="run-selected"
+          variant="primary"
+          size="md"
+          class="w-full"
+          disabled={MapSet.size(@selected) == 0}
         >
-          Previous
-        </.button>
-        <span class="text-sm text-base-content/70">
-          Page {@test_plan_page} of {max(ceil(@test_plan_total / @test_plan_page_size), 1)} ({@test_plan_total} total)
-        </span>
-        <.button
-          disabled={@test_plan_page * @test_plan_page_size >= @test_plan_total}
-          phx-click="paginate-test_plan"
-          phx-value-page={@test_plan_page + 1}
-        >
-          Next
+          <.icon name="hero-play-mini" class="size-4" /> Run selected ({MapSet.size(@selected)})
         </.button>
       </div>
-    </div>
+    </aside>
   </div>
 </Layouts.app>

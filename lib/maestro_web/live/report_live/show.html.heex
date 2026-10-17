@@ -1,4 +1,4 @@
-<Layouts.app flash={@flash} workspace={@workspace}>
+<Layouts.app flash={@flash} workspace={@workspace} active={:history}>
   <:drawer>
     <.workspace_drawer workspace={@workspace} />
   </:drawer>
@@ -15,20 +15,37 @@
   </:breadcrumbs>
 
   <.header>
-    Report <span class="font-mono">{@run_id}</span>
-    <:subtitle>{@workspace.name}</:subtitle>
+    Report
+    <:eyebrow>
+      <.icon name="hero-document-chart-bar-mini" class="size-3.5" />
+      <span class="font-mono">{@run_id}</span>
+    </:eyebrow>
+    <:subtitle>Every suite, testcase, step and assertion in this run.</:subtitle>
     <:actions>
       <.button href={"/workspace/#{@workspace.id}/reports/#{@run_id}/download"}>
-        Download HTML report
+        <.icon name="hero-arrow-down-tray-mini" class="size-4" /> Download HTML report
       </.button>
     </:actions>
   </.header>
 
-  <.report_header model={@model} />
+  <div class="space-y-2">
+    <.report_header model={@model} />
+  </div>
 
-  <.report_suite :for={suite <- @model.suites} suite={suite} />
+  <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_15rem]">
+    <div class="space-y-4">
+      <.report_suite :for={suite <- @model.suites} suite={suite} />
 
-  <p :if={@model.suites == []} class="text-base-content/70">
-    This run has no suites.
-  </p>
+      <div
+        :if={@model.suites == []}
+        class="panel px-6 py-12 text-center text-sm text-base-content/60"
+      >
+        This run has no suites.
+      </div>
+    </div>
+
+    <div :if={@model.suites != []} class="hidden lg:sticky lg:top-0 lg:block">
+      <.report_toc suites={@model.suites} />
+    </div>
+  </div>
 </Layouts.app>

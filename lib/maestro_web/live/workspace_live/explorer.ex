@@ -30,6 +30,7 @@ defmodule MaestroWeb.WorkspaceLive.Explorer do
     |> assign(:current_kind, nil)
     |> assign(:current_path, nil)
     |> assign(:counts, counts)
+    |> assign(:recent_runs, workspace |> Runner.list_for_workspace() |> Enum.take(5))
   end
 
   defp apply_action(socket, :index, %{"kind" => segment} = params) do

@@ -122,62 +122,96 @@ defmodule MaestroWeb.Components.ReferencePicker do
 
     ~H"""
     <div id={@id} class="relative">
-      <div :if={is_binary(@value)} class="flex items-center gap-2">
-        <span class="font-mono text-sm bg-base-200 rounded px-2 py-1">{@value}</span>
-        <.button phx-click="clear" phx-target={@myself}>Change</.button>
+      <div :if={is_binary(@value) and not @open} class="flex items-center gap-2">
+        <span
+          :if={@value != ""}
+          class="inline-flex min-w-0 items-center gap-1.5 rounded-field border border-base-300 bg-base-200/60 px-2.5 py-1.5 font-mono text-[0.8125rem]"
+        >
+          <.icon name={kind_icon(@kind)} class="size-3.5 shrink-0 text-base-content/40" />
+          <span class="truncate">{@value}</span>
+        </span>
+        <span :if={@value == ""} class="text-sm text-base-content/50">None selected</span>
+        <.button size="xs" phx-click="clear" phx-target={@myself}>
+          Change
+        </.button>
       </div>
 
       <div :if={is_map(@value)}>
-        <div class="flex items-center gap-2 mb-1">
-          <span class="badge badge-soft badge-sm">inline</span>
-          <.button phx-click="open" phx-target={@myself}>Use existing instead</.button>
+        <div class="mb-1.5 flex items-center gap-2">
+          <span class="rounded-md bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent">
+            inline
+          </span>
+          <.button size="xs" variant="ghost" phx-click="open" phx-target={@myself}>
+            Use existing instead
+          </.button>
         </div>
         <textarea
           phx-change="update-inline"
           phx-target={@myself}
           name="value"
-          class={["w-full textarea font-mono", @inline_error && "textarea-error"]}
+          class={[
+            "w-full textarea font-mono text-[0.8125rem] leading-relaxed",
+            @inline_error && "textarea-error"
+          ]}
           rows="4"
         >{@inline_raw}</textarea>
-        <p :if={@inline_error} class="mt-1 flex gap-2 items-center text-sm text-error">
-          <.icon name="hero-exclamation-circle" class="size-4" />{@inline_error}
+        <p :if={@inline_error} class="mt-1 flex items-center gap-1.5 text-xs text-error">
+          <.icon name="hero-exclamation-circle-mini" class="size-4" />{@inline_error}
         </p>
       </div>
 
-      <div :if={@open}>
-        <input
-          type="text"
-          value={@query}
-          phx-change="search"
-          phx-target={@myself}
-          phx-debounce="150"
-          name="query"
-          placeholder={"Search #{@kind}s by path or name..."}
-          class="input input-sm w-full mt-1"
-        />
+      <div :if={@open} class="rounded-field border border-base-300 bg-base-100 p-2 shadow-sm">
+        <label class="input input-sm w-full">
+          <.icon name="hero-magnifying-glass-mini" class="size-4 text-base-content/40" />
+          <input
+            type="text"
+            value={@query}
+            phx-change="search"
+            phx-target={@myself}
+            phx-debounce="150"
+            name="query"
+            placeholder={"Search #{@kind}s by path or name..."}
+            autocomplete="off"
+          />
+        </label>
 
-        <ul class="menu bg-base-100 border border-base-300 rounded-box mt-1 max-h-48 overflow-y-auto flex-nowrap">
+        <ul class="mt-1.5 max-h-48 space-y-0.5 overflow-y-auto">
           <li :for={entry <- @entries}>
-            <a phx-click="select" phx-value-entry_path={entry.path} phx-target={@myself}>
-              <span class="font-mono text-sm">{entry.path}</span>
-              <span :if={entry.name} class="text-xs text-base-content/70">{entry.name}</span>
+            <a
+              phx-click="select"
+              phx-value-entry_path={entry.path}
+              phx-target={@myself}
+              class={[
+                "flex cursor-pointer items-center gap-2 rounded-field px-2 py-1.5 hover:bg-base-200",
+                entry.path == @value && "bg-primary/5"
+              ]}
+            >
+              <.icon name={kind_icon(@kind)} class="size-3.5 shrink-0 text-base-content/40" />
+              <span class="truncate font-mono text-[0.8125rem]">{entry.path}</span>
+              <span :if={entry.name} class="ml-auto truncate text-xs text-base-content/50">
+                {entry.name}
+              </span>
             </a>
           </li>
-          <li :if={@entries == []}>
-            <span class="text-sm text-base-content/70">No {@kind}s found.</span>
+          <li :if={@entries == []} class="px-2 py-3 text-center text-sm text-base-content/50">
+            No {@kind}s found.
           </li>
-          <li :if={@truncated?}>
-            <span class="text-xs text-base-content/50">
-              Showing first {@max_results} results.
-            </span>
+          <li :if={@truncated?} class="px-2 py-1 text-xs text-base-content/50">
+            Showing first {@max_results} results.
           </li>
         </ul>
 
-        <div class="flex gap-2 mt-1">
-          <.button phx-click="use-inline" phx-target={@myself}>
-            Define inline instead
+        <div class="mt-1.5 flex gap-2 border-t border-base-300 pt-2">
+          <.button size="xs" variant="ghost" phx-click="use-inline" phx-target={@myself}>
+            <.icon name="hero-code-bracket-mini" class="size-3.5" /> Define inline instead
           </.button>
-          <.button :if={@value != ""} phx-click="clear-value" phx-target={@myself}>
+          <.button
+            :if={@value != ""}
+            size="xs"
+            variant="ghost"
+            phx-click="clear-value"
+            phx-target={@myself}
+          >
             Clear
           </.button>
         </div>

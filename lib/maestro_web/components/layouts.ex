@@ -35,62 +35,182 @@ defmodule MaestroWeb.Layouts do
     default: nil,
     doc: "the current `Maestro.Workspaces.Workspace.t()`, if any page is workspace-scoped"
 
+  attr :active, :atom,
+    default: nil,
+    values: [nil, :overview, :run, :history, :workspaces],
+    doc: "which primary sidebar entry to highlight as the current section"
+
   slot :inner_block, required: true
-  slot :drawer, doc: "the workspace drawer, rendered left of the main content when present"
+
+  slot :drawer,
+    doc: "the workspace drawer, rendered in the sidebar's Explorer section when present"
 
   slot :breadcrumbs,
-    doc: "an optional breadcrumb trail (e.g. <.breadcrumbs .../>), shown below the top navbar"
+    doc: "an optional breadcrumb trail (e.g. <.breadcrumbs .../>), shown in the top bar"
 
   def app(assigns) do
     ~H"""
-    <header class="navbar shrink-0 px-4 sm:px-6 lg:px-8 border-b border-base-300">
-      <div class="flex-1 flex items-center gap-6">
-        <a href="/" class="flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">Maestro</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li :if={@workspace}>
-            <.link navigate={"/workspace/#{@workspace.id}/run"} class="btn btn-ghost btn-sm">
-              Run
-            </.link>
-          </li>
-          <li :if={@workspace}>
-            <.link navigate={"/workspace/#{@workspace.id}/history"} class="btn btn-ghost btn-sm">
-              History
-            </.link>
-          </li>
-          <li>
-            <.link navigate="/workspaces" class="btn btn-ghost btn-sm">Workspaces</.link>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-        </ul>
-      </div>
-    </header>
+    <div class="flex h-full">
+      <div
+        id="app-sidebar-backdrop"
+        class="fixed inset-0 z-30 hidden bg-black/40 lg:hidden"
+        phx-click={toggle_sidebar()}
+      />
 
-    <div
-      :if={@breadcrumbs != []}
-      class="shrink-0 px-4 sm:px-6 lg:px-8 py-2 border-b border-base-300 bg-base-200/50"
-    >
-      {render_slot(@breadcrumbs)}
-    </div>
-
-    <div class="flex-1 min-h-0 flex">
-      {render_slot(@drawer)}
-
-      <main class="flex-1 min-h-0 overflow-y-auto px-4 py-10 sm:px-6 lg:px-8">
-        <div class="mx-auto max-w-5xl space-y-4">
-          {render_slot(@inner_block)}
+      <aside
+        id="app-sidebar"
+        class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-base-300 bg-base-100 max-lg:hidden lg:static"
+      >
+        <div class="flex h-14 shrink-0 items-center justify-between border-b border-base-300 px-4">
+          <.link navigate="/workspaces" class="flex items-center gap-2.5">
+            <img src={~p"/images/logo.svg"} class="size-7" alt="" />
+            <span class="text-[0.9375rem] font-semibold tracking-tight">Maestro</span>
+          </.link>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm btn-square lg:hidden"
+            phx-click={toggle_sidebar()}
+            aria-label="Close navigation"
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
         </div>
-      </main>
+
+        <div :if={@workspace} class="px-3 pt-3">
+          <.link
+            navigate="/workspaces"
+            title="Switch workspace"
+            class="group flex items-center gap-2.5 rounded-field border border-base-300 px-2.5 py-2 transition-colors hover:bg-base-200"
+          >
+            <span class="grid size-7 shrink-0 place-items-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+              {initials(@workspace.name)}
+            </span>
+            <span class="min-w-0 flex-1 leading-tight">
+              <span class="block text-[0.6875rem] text-base-content/50">Workspace</span>
+              <span class="block truncate text-sm font-medium">{@workspace.name}</span>
+            </span>
+            <.icon
+              name="hero-chevron-up-down-mini"
+              class="size-4 shrink-0 text-base-content/40 group-hover:text-base-content/70"
+            />
+          </.link>
+        </div>
+
+        <nav aria-label="Primary" class="space-y-0.5 px-3 pt-3">
+          <.nav_link
+            :if={@workspace}
+            navigate={"/workspace/#{@workspace.id}"}
+            icon="hero-squares-2x2"
+            active={@active == :overview}
+          >
+            Overview
+          </.nav_link>
+          <.nav_link
+            :if={@workspace}
+            navigate={"/workspace/#{@workspace.id}/run"}
+            icon="hero-play"
+            active={@active == :run}
+          >
+            Run
+          </.nav_link>
+          <.nav_link
+            :if={@workspace}
+            navigate={"/workspace/#{@workspace.id}/history"}
+            icon="hero-clock"
+            active={@active == :history}
+          >
+            History
+          </.nav_link>
+          <.nav_link
+            :if={!@workspace}
+            navigate="/workspaces"
+            icon="hero-rectangle-stack"
+            active={@active == :workspaces}
+          >
+            Workspaces
+          </.nav_link>
+        </nav>
+
+        <div :if={@drawer != []} class="mt-5 flex min-h-0 flex-1 flex-col">
+          <div class="section-label px-5 pb-1.5">Explorer</div>
+          <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+            {render_slot(@drawer)}
+          </div>
+        </div>
+        <div :if={@drawer == []} class="flex-1" />
+
+        <div class="flex shrink-0 items-center justify-between gap-2 border-t border-base-300 px-3 py-2.5">
+          <a
+            href="/api/docs"
+            target="_blank"
+            rel="noopener"
+            class="nav-item px-2 py-1 text-xs"
+            title="REST API documentation"
+          >
+            <.icon name="hero-code-bracket-square" class="size-4" /> API docs
+          </a>
+          <.theme_toggle />
+        </div>
+      </aside>
+
+      <div class="flex min-w-0 flex-1 flex-col">
+        <header class="flex h-14 shrink-0 items-center gap-3 border-b border-base-300 bg-base-100 px-4 sm:px-6 lg:px-8">
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm btn-square -ml-1.5 lg:hidden"
+            phx-click={toggle_sidebar()}
+            aria-label="Open navigation"
+          >
+            <.icon name="hero-bars-3" class="size-5" />
+          </button>
+          <div class="min-w-0 flex-1">{render_slot(@breadcrumbs)}</div>
+        </header>
+
+        <main class="min-h-0 flex-1 overflow-y-auto">
+          <div class="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+            {render_slot(@inner_block)}
+          </div>
+        </main>
+      </div>
     </div>
 
     <.flash_group flash={@flash} />
     """
+  end
+
+  attr :navigate, :string, required: true
+  attr :icon, :string, required: true
+  attr :active, :boolean, default: false
+  slot :inner_block, required: true
+
+  defp nav_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class={["nav-item", @active && "nav-item-active"]}
+      aria-current={@active && "page"}
+    >
+      <.icon
+        name={@icon}
+        class={["size-4 shrink-0", if(@active, do: "text-primary", else: "text-base-content/50")]}
+      />
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
+  defp toggle_sidebar(js \\ %JS{}) do
+    js
+    |> JS.toggle_class("max-lg:hidden", to: "#app-sidebar")
+    |> JS.toggle_class("hidden", to: "#app-sidebar-backdrop")
+  end
+
+  defp initials(name) do
+    name
+    |> String.split(~r/[\s_\-]+/, trim: true)
+    |> Enum.take(2)
+    |> Enum.map_join(&String.first/1)
+    |> String.upcase()
   end
 
   @doc """
@@ -149,31 +269,25 @@ defmodule MaestroWeb.Layouts do
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 [[data-theme-source=system]_&]:!left-0 transition-[left]" />
+    <div class="relative flex items-center rounded-full border border-base-300 bg-base-200 p-0.5">
+      <div class="absolute inset-y-0.5 left-0.5 w-7 rounded-full border border-base-300 bg-base-100 shadow-xs transition-[left] [[data-theme=light]_&]:left-[1.875rem] [[data-theme=dark]_&]:left-[3.625rem] [[data-theme-source=system]_&]:!left-0.5" />
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        :for={
+          {theme, icon} <- [
+            {"system", "hero-computer-desktop-micro"},
+            {"light", "hero-sun-micro"},
+            {"dark", "hero-moon-micro"}
+          ]
+        }
+        type="button"
+        class="relative grid h-6 w-7 cursor-pointer place-items-center text-base-content/50 hover:text-base-content"
         phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="system"
+        data-phx-theme={theme}
+        title={"#{String.capitalize(theme)} theme"}
+        aria-label={"#{String.capitalize(theme)} theme"}
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="light"
-      >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="dark"
-      >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name={icon} class="size-3.5" />
       </button>
     </div>
     """

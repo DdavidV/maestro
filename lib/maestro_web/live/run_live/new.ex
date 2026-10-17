@@ -128,6 +128,92 @@ defmodule MaestroWeb.RunLive.New do
     |> Enum.uniq()
   end
 
+  attr :kind, :atom, required: true
+  attr :title, :string, required: true
+  attr :query, :string, required: true
+  attr :paths, :list, required: true
+  attr :page, :integer, required: true
+  attr :total, :integer, required: true
+  attr :page_size, :integer, required: true
+  attr :selected, :any, required: true
+
+  defp picker_section(assigns) do
+    ~H"""
+    <section class="panel overflow-hidden">
+      <div class="flex flex-wrap items-center gap-3 border-b border-base-300 px-4 py-3">
+        <.icon name={kind_icon(@kind)} class="size-4 text-base-content/40" />
+        <h3 class="text-sm font-semibold">
+          {@title} <span class="ml-1 font-normal text-base-content/50">{@total}</span>
+        </h3>
+        <form
+          id={"#{@kind}-search-form"}
+          phx-change={"search-#{@kind}"}
+          class="ml-auto w-full sm:w-64"
+          onsubmit="return false"
+        >
+          <label class="input input-sm w-full">
+            <.icon name="hero-magnifying-glass-mini" class="size-4 text-base-content/40" />
+            <input
+              type="text"
+              name="query"
+              value={@query}
+              placeholder={"Filter #{String.downcase(@title)}…"}
+              phx-debounce="200"
+              autocomplete="off"
+            />
+          </label>
+        </form>
+      </div>
+
+      <ul class="max-h-[22rem] divide-y divide-base-300 overflow-y-auto">
+        <li :for={path <- @paths}>
+          <label class={[
+            "flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors",
+            if(MapSet.member?(@selected, {@kind, path}),
+              do: "bg-primary/5 hover:bg-primary/10",
+              else: "hover:bg-base-200/60"
+            )
+          ]}>
+            <input
+              type="checkbox"
+              checked={MapSet.member?(@selected, {@kind, path})}
+              phx-click="toggle-selected"
+              phx-value-kind={@kind}
+              phx-value-path={path}
+              class="checkbox checkbox-sm checkbox-primary"
+            />
+            <span class="kbd-path truncate">{path}</span>
+          </label>
+        </li>
+        <li :if={@paths == []} class="px-4 py-8 text-center text-sm text-base-content/50">
+          No {String.downcase(@title)} found.
+        </li>
+      </ul>
+
+      <div
+        :if={@total > @page_size}
+        class="flex items-center justify-between gap-2 border-t border-base-300 px-4 py-2.5"
+      >
+        <span class="text-xs text-base-content/60">
+          Page {@page} of {max(ceil(@total / @page_size), 1)} ({@total} total)
+        </span>
+        <div class="flex gap-2">
+          <.button disabled={@page <= 1} phx-click={"paginate-#{@kind}"} phx-value-page={@page - 1}>
+            <.icon name="hero-chevron-left-mini" class="size-4" /> Previous
+          </.button>
+          <.button
+            disabled={@page * @page_size >= @total}
+            phx-click={"paginate-#{@kind}"}
+            phx-value-page={@page + 1}
+          >
+            Next <.icon name="hero-chevron-right-mini" class="size-4" />
+          </.button>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
   defp parse_page(value) do
     case Integer.parse(value) do
       {page, _rest} when page > 0 -> page

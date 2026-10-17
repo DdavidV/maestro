@@ -154,35 +154,44 @@ defmodule MaestroWeb.Components.WorkspaceDrawer do
   @impl true
   def render(assigns) do
     ~H"""
-    <nav class="w-64 shrink-0 h-full overflow-y-auto border-r border-base-300 bg-base-100 px-2 py-3">
-      <.link
-        patch={"/workspace/#{@workspace.id}"}
-        class="block px-2 py-1.5 mb-2 rounded font-semibold text-sm hover:bg-base-200"
-      >
-        {@workspace.name}
-      </.link>
+    <nav aria-label="Workspace resources" class="space-y-0.5">
+      <div :for={{kind, label, segment} <- resource_tiles()}>
+        <div class={[
+          "group flex items-center rounded-field transition-colors hover:bg-base-200",
+          @current_kind == kind && is_nil(@current_path) && "bg-base-200"
+        ]}>
+          <button
+            type="button"
+            phx-click="toggle-kind"
+            phx-value-kind={kind}
+            phx-target={@myself}
+            aria-expanded={to_string(MapSet.member?(@open_kinds, kind))}
+            class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-1.5 pl-1.5 pr-1 text-sm font-medium text-base-content/80"
+          >
+            <.icon
+              name="hero-chevron-right-mini"
+              class={[
+                "size-4 shrink-0 text-base-content/40 transition-transform",
+                MapSet.member?(@open_kinds, kind) && "rotate-90"
+              ]}
+            />
+            <.icon name={kind_icon(kind)} class="size-4 shrink-0 text-base-content/50" />
+            <span class="flex-1 truncate text-left">{label}</span>
+          </button>
+          <.link
+            patch={"/workspace/#{@workspace.id}/#{segment}"}
+            class="mr-1 rounded px-1.5 py-0.5 text-xs tabular-nums text-base-content/40 hover:bg-base-300 hover:text-base-content"
+            title={"Browse all #{String.downcase(label)}"}
+            aria-label={"Browse all #{String.downcase(label)}"}
+          >
+            {@counts[kind]}
+          </.link>
+        </div>
 
-      <div :for={{kind, label, segment} <- resource_tiles()} class="mb-1">
-        <button
-          type="button"
-          phx-click="toggle-kind"
-          phx-value-kind={kind}
-          phx-target={@myself}
-          class="w-full flex items-center gap-1 px-2 py-1 rounded text-sm font-medium hover:bg-base-200"
+        <div
+          :if={MapSet.member?(@open_kinds, kind)}
+          class="ml-[1.0625rem] border-l border-base-300 pl-1.5 py-0.5"
         >
-          <.icon
-            name={
-              if MapSet.member?(@open_kinds, kind),
-                do: "hero-chevron-down",
-                else: "hero-chevron-right"
-            }
-            class="size-3.5 shrink-0"
-          />
-          <span class="flex-1 text-left">{label}</span>
-          <span class="text-xs text-base-content/50">{@counts[kind]}</span>
-        </button>
-
-        <div :if={MapSet.member?(@open_kinds, kind)} class="ml-2">
           <.dir_node
             kind={kind}
             dir_path=""
@@ -229,7 +238,7 @@ defmodule MaestroWeb.Components.WorkspaceDrawer do
 
     ~H"""
     <div>
-      <p :if={@loading?} class="px-2 py-1 text-xs text-base-content/50 flex items-center gap-1.5">
+      <p :if={@loading?} class="flex items-center gap-1.5 px-2 py-1 text-xs text-base-content/50">
         <.icon name="hero-arrow-path" class="size-3 animate-spin" /> Loading...
       </p>
 
@@ -240,23 +249,22 @@ defmodule MaestroWeb.Components.WorkspaceDrawer do
           phx-value-kind={@kind}
           phx-value-dir={Path.join(@dir_path, folder)}
           phx-target={@myself}
-          class="w-full flex items-center gap-1 px-2 py-1 rounded text-sm hover:bg-base-200"
+          class="tree-item cursor-pointer"
         >
           <.icon
             name={
               if MapSet.member?(@open_dirs, {@kind, Path.join(@dir_path, folder)}),
-                do: "hero-chevron-down",
-                else: "hero-chevron-right"
+                do: "hero-folder-open-mini",
+                else: "hero-folder-mini"
             }
-            class="size-3.5 shrink-0"
+            class="size-4 shrink-0 text-base-content/40"
           />
-          <.icon name="hero-folder" class="size-3.5 shrink-0 text-base-content/50" />
-          <span>{folder}</span>
+          <span class="truncate">{folder}</span>
         </button>
 
         <div
           :if={MapSet.member?(@open_dirs, {@kind, Path.join(@dir_path, folder)})}
-          class="ml-3 border-l border-base-300 pl-1"
+          class="ml-[0.9375rem] border-l border-base-300 pl-1.5"
         >
           <.dir_node
             kind={@kind}
@@ -280,11 +288,11 @@ defmodule MaestroWeb.Components.WorkspaceDrawer do
           id={dom_id}
           patch={"/workspace/#{@workspace.id}/#{@segment}/#{entry.path}"}
           class={[
-            "flex items-center gap-1 px-2 py-1 rounded text-sm hover:bg-base-200",
-            @kind == @current_kind && entry.path == @current_path && "bg-base-200 font-semibold"
+            "tree-item",
+            @kind == @current_kind && entry.path == @current_path && "tree-item-active"
           ]}
+          title={entry.path}
         >
-          <.icon name="hero-document-text" class="size-3.5 shrink-0 text-base-content/50" />
           <span class="truncate">{Path.basename(entry.path)}</span>
         </.link>
       </div>

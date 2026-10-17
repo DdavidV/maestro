@@ -19,84 +19,142 @@
 
   <.header>
     {@page_title}
-    <:actions>
-      <.button patch={cancel_path(@workspace, @segment, @path)}>Cancel</.button>
-    </:actions>
+    <:eyebrow>
+      <.icon name={kind_icon(@kind)} class="size-3.5" />
+      {if @live_action == :new, do: "Create", else: "Edit"} {String.downcase(kind_singular(@kind))}
+    </:eyebrow>
+    <:subtitle>{kind_description(@kind)}</:subtitle>
   </.header>
 
-  <div class={(@kind in [:suite, :scenario] && "max-w-4xl") || "max-w-2xl"}>
-    <form phx-submit="save">
-      <div class="fieldset mb-2">
-        <label for="resource-path">
-          <span class="label mb-1">Path</span>
-          <input
-            type="text"
-            id="resource-path"
-            name="path"
-            value={@path_input}
-            phx-change="update-path"
-            phx-debounce="200"
-            disabled={@live_action == :edit}
-            placeholder="e.g. checkout/smoke"
-            class={["w-full input", @path_error && "input-error"]}
-          />
-        </label>
-        <p :if={@path_error} class="mt-1.5 flex gap-2 items-center text-sm text-error">
-          <.icon name="hero-exclamation-circle" class="size-5" />{@path_error}
-        </p>
-      </div>
-
-      <div :if={@errors != []} class="alert alert-error mb-4">
-        <ul>
+  <form
+    phx-submit="save"
+    class={["space-y-6", (@kind in [:suite, :scenario] && "max-w-4xl") || "max-w-3xl"]}
+  >
+    <div :if={@errors != []} role="alert" class="alert alert-error alert-soft items-start">
+      <.icon name="hero-exclamation-triangle" class="size-5" />
+      <div>
+        <p class="font-medium">This {String.downcase(kind_singular(@kind))} can't be saved yet</p>
+        <ul class="mt-1 space-y-0.5 text-sm">
           <li :for={{message, path} <- @errors}>
             <span class="font-mono text-xs">{path}</span>: {message}
           </li>
         </ul>
       </div>
+    </div>
 
-      <.top_level_fields :if={@kind in [:suite, :test_plan]} kind={@kind} data={@data} />
-      <.name_description_fields
-        :if={@kind in [:dataset, :scenario, :template]}
-        kind={@kind}
-        data={@data}
-      />
+    <section class="panel">
+      <div class="panel-header">
+        <h2 class="text-sm font-semibold">General</h2>
+      </div>
+      <div class="space-y-1 p-4">
+        <div class="fieldset mb-2">
+          <label for="resource-path" class="label mb-1.5 text-xs font-medium text-base-content/80">
+            Path
+          </label>
+          <label class={["input w-full", @path_error && "input-error"]}>
+            <span class="font-mono text-xs text-base-content/40">{@segment}/</span>
+            <input
+              type="text"
+              id="resource-path"
+              name="path"
+              value={@path_input}
+              phx-change="update-path"
+              phx-debounce="200"
+              disabled={@live_action == :edit}
+              placeholder="e.g. checkout/smoke"
+              class="font-mono text-[0.8125rem]"
+            />
+          </label>
+          <p :if={@path_error} class="mt-1.5 flex gap-1.5 items-center text-xs text-error">
+            <.icon name="hero-exclamation-circle-mini" class="size-4" />{@path_error}
+          </p>
+          <p
+            :if={!@path_error && @live_action == :new}
+            class="mt-1.5 text-xs text-base-content/50"
+          >
+            Where the file lives in the workspace. Use slashes to group into folders.
+          </p>
+        </div>
 
-      <.dataset_fields
-        :if={@kind == :dataset}
-        data={@data}
-        dataset_mode={@dataset_mode}
-        data_pairs={@data_pairs}
-        row_columns={@row_columns}
-        errors={@errors}
-      />
-      <.template_fields
-        :if={@kind == :template}
-        data={@data}
-        client_names={@client_names}
-        payload_raw={@payload_raw}
-        payload_error={@payload_error}
-        options_raw={@options_raw}
-        options_error={@options_error}
-      />
-      <.test_plan_fields :if={@kind == :test_plan} data={@data} suite_entries={@suite_entries} />
-      <.scenario_fields
-        :if={@kind == :scenario}
-        workspace={@workspace}
-        data={@data}
-        client_names={@client_names}
-        expected_raw={@expected_raw}
-        errors={@errors}
-      />
-      <.suite_fields
-        :if={@kind == :suite}
-        workspace={@workspace}
-        data={@data}
-        client_names={@client_names}
-        expected_raw={@expected_raw}
-        errors={@errors}
-      />
+        <.top_level_fields :if={@kind in [:suite, :test_plan]} kind={@kind} data={@data} />
+        <.name_description_fields
+          :if={@kind in [:dataset, :scenario, :template]}
+          kind={@kind}
+          data={@data}
+        />
+      </div>
+    </section>
 
-      <.button type="submit" variant="primary" class="btn btn-primary mt-4">Save</.button>
-    </form>
-  </div>
+    <section :if={@kind == :dataset} class="panel">
+      <div class="panel-header">
+        <h2 class="text-sm font-semibold">Values</h2>
+      </div>
+      <div class="p-4">
+        <.dataset_fields
+          data={@data}
+          dataset_mode={@dataset_mode}
+          data_pairs={@data_pairs}
+          row_columns={@row_columns}
+          errors={@errors}
+        />
+      </div>
+    </section>
+
+    <section :if={@kind == :template} class="panel">
+      <div class="panel-header">
+        <h2 class="text-sm font-semibold">Request</h2>
+      </div>
+      <div class="p-4">
+        <.template_fields
+          data={@data}
+          client_names={@client_names}
+          payload_raw={@payload_raw}
+          payload_error={@payload_error}
+          options_raw={@options_raw}
+          options_error={@options_error}
+        />
+      </div>
+    </section>
+
+    <section :if={@kind == :test_plan} class="panel">
+      <div class="panel-header">
+        <h2 class="text-sm font-semibold">Suites</h2>
+        <span class="text-xs text-base-content/50">
+          {length(@data["test_suites"] || [])} selected
+        </span>
+      </div>
+      <div class="p-2">
+        <.test_plan_fields data={@data} suite_entries={@suite_entries} />
+      </div>
+    </section>
+
+    <.scenario_fields
+      :if={@kind == :scenario}
+      workspace={@workspace}
+      data={@data}
+      client_names={@client_names}
+      expected_raw={@expected_raw}
+      errors={@errors}
+    />
+    <.suite_fields
+      :if={@kind == :suite}
+      workspace={@workspace}
+      data={@data}
+      client_names={@client_names}
+      expected_raw={@expected_raw}
+      errors={@errors}
+    />
+
+    <div class="panel sticky bottom-4 z-20 flex items-center justify-between gap-3 px-4 py-3 shadow-lg">
+      <p class="hidden text-xs text-base-content/50 sm:block">
+        Changes are validated against the schema when you save.
+      </p>
+      <div class="ml-auto flex items-center gap-2">
+        <.button patch={cancel_path(@workspace, @segment, @path)} variant="ghost">Cancel</.button>
+        <.button type="submit" variant="primary">
+          <.icon name="hero-check-mini" class="size-4" /> Save
+        </.button>
+      </div>
+    </div>
+  </form>
 </Layouts.app>

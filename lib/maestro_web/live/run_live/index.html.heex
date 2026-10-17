@@ -1,4 +1,4 @@
-<Layouts.app flash={@flash} workspace={@workspace}>
+<Layouts.app flash={@flash} workspace={@workspace} active={:history}>
   <:drawer>
     <.workspace_drawer workspace={@workspace} />
   </:drawer>
@@ -9,44 +9,75 @@
 
   <.header>
     History
-    <:subtitle>{@workspace.name}</:subtitle>
+    <:subtitle>Every run started in this workspace, newest first.</:subtitle>
     <:actions>
       <.button
         :if={@runs != []}
+        variant="danger"
         phx-click="clear-history"
         data-confirm="Clear this workspace's entire run history? This only forgets it here — it does not affect any files."
       >
-        Clear history
+        <.icon name="hero-trash-mini" class="size-4" /> Clear history
+      </.button>
+      <.button navigate={"/workspace/#{@workspace.id}/run"} variant="primary">
+        <.icon name="hero-play-mini" class="size-4" /> Start a run
       </.button>
     </:actions>
   </.header>
 
-  <.table id="runs" rows={@runs} row_id={& &1.run_id}>
-    <:col :let={run} label="Run">
-      <.link
-        navigate={"/workspace/#{@workspace.id}/history/#{run.run_id}"}
-        class="link link-hover font-mono"
-      >
-        {run.run_id}
-      </.link>
-    </:col>
-    <:col :let={run} label="Status">
-      <.status_badge status={run.status} />
-    </:col>
-    <:col :let={run} label="Suites">{run.suite_count}</:col>
-    <:col :let={run} label="Started">{run.started_at}</:col>
-    <:action :let={run}>
-      <.button
-        phx-click="delete"
-        phx-value-run_id={run.run_id}
-        data-confirm={"Remove #{run.run_id} from history?"}
-      >
-        Remove
-      </.button>
-    </:action>
-  </.table>
+  <div class="panel overflow-hidden">
+    <div :if={@runs != []} class="overflow-x-auto">
+      <.table id="runs" rows={@runs} row_id={& &1.run_id}>
+        <:col :let={run} label="Status">
+          <.status_badge status={run.status} />
+        </:col>
+        <:col :let={run} label="Run">
+          <.link
+            navigate={"/workspace/#{@workspace.id}/history/#{run.run_id}"}
+            class="kbd-path font-medium hover:text-primary"
+          >
+            {run.run_id}
+          </.link>
+        </:col>
+        <:col :let={run} label="Suites">
+          <span class="tabular-nums text-base-content/70">{run.suite_count}</span>
+        </:col>
+        <:col :let={run} label="Started">
+          <span class="text-base-content/70" title={format_datetime(run.started_at)}>
+            {relative_time(run.started_at)}
+          </span>
+        </:col>
+        <:action :let={run}>
+          <.link
+            navigate={"/workspace/#{@workspace.id}/reports/#{run.run_id}"}
+            class="btn btn-ghost btn-sm text-base-content/70 hover:text-base-content"
+          >
+            Report
+          </.link>
+          <.button
+            variant="ghost"
+            phx-click="delete"
+            phx-value-run_id={run.run_id}
+            data-confirm={"Remove #{run.run_id} from history?"}
+            aria-label={"Remove #{run.run_id} from history"}
+            class="btn-square text-base-content/40 hover:text-error"
+          >
+            <.icon name="hero-trash-mini" class="size-4" />
+          </.button>
+        </:action>
+      </.table>
+    </div>
 
-  <p :if={@runs == []} class="text-base-content/70">
-    No runs yet in this workspace's history.
-  </p>
+    <div :if={@runs == []} class="flex flex-col items-center gap-3 px-6 py-16 text-center">
+      <span class="grid size-12 place-items-center rounded-full bg-base-200 text-base-content/40">
+        <.icon name="hero-clock" class="size-6" />
+      </span>
+      <div>
+        <p class="font-medium">No runs yet</p>
+        <p class="mt-1 text-sm text-base-content/60">
+          No runs yet in this workspace's history. Start one from the Run page.
+        </p>
+      </div>
+    </div>
+  </div>
 </Layouts.app>

@@ -1,126 +1,214 @@
-<Layouts.app flash={@flash}>
-  <div class="flex flex-col" style="height: calc(100vh - 12rem)">
-    <.header>
-      Workspaces
-      <:subtitle>Pick a workspace to browse, or register a new one.</:subtitle>
-      <:actions>
-        <.button phx-click="open-new-workspace" variant="primary">New workspace</.button>
-      </:actions>
-    </.header>
+<Layouts.app flash={@flash} active={:workspaces}>
+  <:breadcrumbs>
+    <span class="text-sm font-medium">Workspaces</span>
+  </:breadcrumbs>
 
-    <form id="workspace-search-form" phx-change="search" class="my-4 max-w-sm shrink-0">
-      <input
-        type="text"
-        name="query"
-        value={@query}
-        placeholder="Search workspaces by name..."
-        class="input w-full"
-        phx-debounce="200"
-      />
-    </form>
+  <.header>
+    Workspaces
+    <:subtitle>
+      A workspace is a directory of suites, scenarios, datasets, templates and test plans.
+    </:subtitle>
+    <:actions>
+      <.button phx-click="open-new-workspace" variant="primary">
+        <.icon name="hero-plus-mini" class="size-4" /> New workspace
+      </.button>
+    </:actions>
+  </.header>
 
-    <div class="card bg-base-100 border border-base-300 flex flex-col min-h-0 flex-1">
-      <div class="flex-1 min-h-0 overflow-y-auto">
-        <.table :if={@workspaces != []} id="workspaces" rows={@workspaces}>
-          <:col :let={workspace} label="Name">
-            <.link navigate={~p"/workspace/#{workspace.id}"} class="link link-hover font-semibold">
-              {workspace.name}
-            </.link>
-          </:col>
-          <:col :let={workspace} label="Root dir">
-            <span class="font-mono text-sm text-base-content/70">{workspace.root_dir}</span>
-          </:col>
-          <:col :let={workspace} label="Source">
-            <span :if={workspace.vcs == :none} class="text-sm text-base-content/70">local</span>
+  <div class="panel overflow-hidden">
+    <div class="flex items-center gap-3 border-b border-base-300 px-4 py-2.5">
+      <form
+        id="workspace-search-form"
+        phx-change="search"
+        class="w-full max-w-sm"
+        onsubmit="return false"
+      >
+        <label class="input input-sm w-full">
+          <.icon name="hero-magnifying-glass-mini" class="size-4 text-base-content/40" />
+          <input
+            type="text"
+            name="query"
+            value={@query}
+            placeholder="Search workspaces by name…"
+            phx-debounce="200"
+            autocomplete="off"
+          />
+        </label>
+      </form>
+      <span class="ml-auto hidden text-xs text-base-content/50 sm:inline">
+        {length(@workspaces)} {if length(@workspaces) == 1, do: "workspace", else: "workspaces"}
+      </span>
+    </div>
+
+    <ul :if={@workspaces != []} id="workspaces" class="divide-y divide-base-300">
+      <li
+        :for={workspace <- @workspaces}
+        id={"workspace-#{workspace.id}"}
+        class="group flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-base-200/50 sm:flex-row sm:items-center"
+      >
+        <.link
+          navigate={~p"/workspace/#{workspace.id}"}
+          class="flex min-w-0 flex-1 items-center gap-3.5"
+        >
+          <span class="grid size-10 shrink-0 place-items-center rounded-field bg-primary/10 text-primary">
+            <.icon
+              name={if workspace.vcs == :git, do: "hero-code-bracket", else: "hero-folder"}
+              class="size-5"
+            />
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="flex items-center gap-2">
+              <span class="truncate font-semibold group-hover:text-primary">{workspace.name}</span>
+              <.kind_badge label={if workspace.vcs == :git, do: "git", else: "local"} />
+            </span>
+            <span class="mt-0.5 block truncate kbd-path text-xs text-base-content/50">
+              {workspace.root_dir}
+            </span>
             <span
               :if={workspace.vcs == :git}
-              class="font-mono text-sm text-base-content/70"
+              class="mt-0.5 block truncate kbd-path text-xs text-base-content/50"
               title={workspace.remote_url}
             >
-              <.icon name="hero-code-bracket" class="size-4 align-text-bottom" /> {workspace.remote_url}
+              {workspace.remote_url}
             </span>
-          </:col>
-          <:col :let={workspace} label="Created">{workspace.created_at}</:col>
-          <:action :let={workspace}>
-            <.button :if={workspace.vcs == :git} phx-click="pull" phx-value-id={workspace.id}>
-              Pull
-            </.button>
-            <.button
-              phx-click="delete"
-              phx-value-id={workspace.id}
-              data-confirm="Close this workspace? Its files are left on disk."
-            >
-              Close
-            </.button>
-          </:action>
-        </.table>
+          </span>
+        </.link>
 
-        <div
-          :if={@workspaces == []}
-          class="flex flex-col items-center justify-center gap-2 h-full text-center p-10"
-        >
-          <.icon name="hero-folder-open" class="size-10 text-base-content/30" />
-          <p class="text-base-content/70">
-            {if @query == "",
-              do: "No workspaces yet — create one to get started.",
-              else: "No workspaces match \"#{@query}\"."}
-          </p>
+        <div class="flex items-center gap-2 sm:ml-4">
+          <span
+            class="mr-2 hidden text-xs text-base-content/50 md:inline"
+            title={MaestroWeb.RunComponents.format_datetime(workspace.created_at)}
+          >
+            Created {MaestroWeb.RunComponents.relative_time(workspace.created_at)}
+          </span>
+          <.button :if={workspace.vcs == :git} phx-click="pull" phx-value-id={workspace.id}>
+            <.icon name="hero-arrow-down-tray-mini" class="size-4" /> Pull
+          </.button>
+          <.button
+            variant="ghost"
+            phx-click="delete"
+            phx-value-id={workspace.id}
+            data-confirm="Close this workspace? Its files are left on disk."
+            title="Close workspace (files stay on disk)"
+          >
+            Close
+          </.button>
+          <.link
+            navigate={~p"/workspace/#{workspace.id}"}
+            class="btn btn-sm btn-ghost btn-square text-base-content/40"
+            aria-label={"Open #{workspace.name}"}
+          >
+            <.icon name="hero-chevron-right-mini" class="size-4" />
+          </.link>
         </div>
+      </li>
+    </ul>
+
+    <div
+      :if={@workspaces == []}
+      class="flex flex-col items-center gap-3 px-6 py-16 text-center"
+    >
+      <span class="grid size-12 place-items-center rounded-full bg-base-200 text-base-content/40">
+        <.icon name="hero-folder-open" class="size-6" />
+      </span>
+      <div>
+        <p class="font-medium">
+          {if @query == "", do: "No workspaces yet", else: "No matches"}
+        </p>
+        <p class="mt-1 text-sm text-base-content/60">
+          {if @query == "",
+            do: "Create one to start authoring and running suites.",
+            else: "No workspaces match \"#{@query}\"."}
+        </p>
       </div>
     </div>
   </div>
 
   <div
     :if={@show_new_workspace}
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 backdrop-blur-[2px]"
   >
     <div
-      class="card bg-base-100 border border-base-300 shadow-xl w-full max-w-md p-6"
+      class="w-full max-w-md overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-2xl"
       phx-click-away="close-new-workspace"
+      phx-window-keydown="close-new-workspace"
+      phx-key="escape"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-workspace-title"
     >
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="font-semibold text-lg">New workspace</h3>
+      <div class="flex items-start justify-between gap-4 border-b border-base-300 px-5 py-4">
+        <div>
+          <h3 id="new-workspace-title" class="font-semibold">New workspace</h3>
+          <p class="mt-0.5 text-sm text-base-content/60">
+            Point Maestro at a directory, or clone one from git.
+          </p>
+        </div>
         <button
           type="button"
           phx-click="close-new-workspace"
-          class="btn btn-ghost btn-sm btn-circle"
+          class="btn btn-ghost btn-sm btn-square -mr-1.5 -mt-1"
           aria-label="close"
         >
           <.icon name="hero-x-mark" class="size-4" />
         </button>
       </div>
 
-      <div role="tablist" class="tabs tabs-boxed mb-4 w-fit">
-        <button
-          type="button"
-          role="tab"
-          class={["tab", @new_workspace_mode == "local" && "tab-active"]}
-          phx-click="new-workspace-mode"
-          phx-value-mode="local"
-        >
-          Local directory
-        </button>
-        <button
-          type="button"
-          role="tab"
-          class={["tab", @new_workspace_mode == "git" && "tab-active"]}
-          phx-click="new-workspace-mode"
-          phx-value-mode="git"
-        >
-          Clone from git
-        </button>
+      <div class="px-5 pt-4">
+        <div role="tablist" class="grid grid-cols-2 gap-1 rounded-field bg-base-200 p-1">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={to_string(@new_workspace_mode == "local")}
+            class={[
+              "flex items-center justify-center gap-1.5 rounded-[calc(var(--radius-field)-2px)] px-3 py-1.5 text-sm font-medium transition",
+              if(@new_workspace_mode == "local",
+                do: "bg-base-100 shadow-xs",
+                else: "text-base-content/60 hover:text-base-content"
+              )
+            ]}
+            phx-click="new-workspace-mode"
+            phx-value-mode="local"
+          >
+            <.icon name="hero-folder-mini" class="size-4" /> Local directory
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={to_string(@new_workspace_mode == "git")}
+            class={[
+              "flex items-center justify-center gap-1.5 rounded-[calc(var(--radius-field)-2px)] px-3 py-1.5 text-sm font-medium transition",
+              if(@new_workspace_mode == "git",
+                do: "bg-base-100 shadow-xs",
+                else: "text-base-content/60 hover:text-base-content"
+              )
+            ]}
+            phx-click="new-workspace-mode"
+            phx-value-mode="git"
+          >
+            <.icon name="hero-code-bracket-mini" class="size-4" /> Clone from git
+          </button>
+        </div>
       </div>
 
-      <.form for={@form} id="new-workspace-form" phx-submit="create" class="flex flex-col gap-2">
-        <.input field={@form[:name]} label="Name" required />
+      <.form for={@form} id="new-workspace-form" phx-submit="create" class="px-5 pt-4 pb-5">
+        <.input field={@form[:name]} label="Name" placeholder="e.g. Checkout platform" required />
         <.input
           :if={@new_workspace_mode == "git"}
           field={@form[:remote_url]}
           label="Git remote URL"
+          placeholder="git@github.com:org/repo.git"
           required
         />
-        <.input field={@form[:root_dir]} label="Root directory (absolute path)" required />
-        <.button type="submit" variant="primary" class="mt-2">Create workspace</.button>
+        <.input
+          field={@form[:root_dir]}
+          label="Root directory (absolute path)"
+          class="w-full input font-mono text-[0.8125rem]"
+          required
+        />
+        <div class="mt-4 flex justify-end">
+          <.button type="submit" variant="primary">Create workspace</.button>
+        </div>
       </.form>
     </div>
   </div>

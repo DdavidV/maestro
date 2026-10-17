@@ -11,7 +11,8 @@ defmodule MaestroWeb.RunLive.Index do
 
   use MaestroWeb, :live_view
 
-  import MaestroWeb.RunComponents, only: [status_badge: 1]
+  import MaestroWeb.RunComponents,
+    only: [status_badge: 1, format_datetime: 1, relative_time: 1]
 
   alias Maestro.Core.Runner
   alias Maestro.Core.Runner.Broadcaster

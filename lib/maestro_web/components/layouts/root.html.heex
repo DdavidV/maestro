@@ -4,7 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <.live_title default="Maestro" suffix=" · Phoenix Framework" phx-no-format>{assigns[:page_title]}</.live_title>
+    <.live_title default="Maestro" suffix=" · Maestro" phx-no-format>{assigns[:page_title]}</.live_title>
+    <link rel="icon" type="image/svg+xml" href={~p"/images/logo.svg"} />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
@@ -37,7 +38,7 @@
       })();
     </script>
   </head>
-  <body class="h-screen flex flex-col overflow-hidden">
+  <body class="h-screen overflow-hidden bg-base-200 text-base-content antialiased">
     {@inner_content}
   </body>
 </html>
