@@ -117,7 +117,55 @@ defmodule MaestroWeb.ReportLive.ShowTest do
     {:ok, view, _html} = live(conn, ~p"/workspace/#{workspace.id}/reports/#{run_id}")
 
     assert has_element?(view, "a[href='/workspace/#{workspace.id}/history/#{run_id}']")
-    assert has_element?(view, "a[href='/workspace/#{workspace.id}/reports/#{run_id}/download']")
+
+    assert has_element?(
+             view,
+             "#report-formats a[href='/workspace/#{workspace.id}/reports/#{run_id}/download?format=html']"
+           )
+  end
+
+  for ext <- ~w(csv md json) do
+    defmodule Module.concat(__MODULE__, "Format#{String.upcase(ext)}") do
+      @moduledoc false
+      @behaviour Maestro.Report.Format
+      @ext ext
+
+      @impl true
+      def render(_model), do: ""
+
+      @impl true
+      def extension, do: @ext
+    end
+  end
+
+  test "every format is listed in the single Download dropdown, none outside it", %{
+    conn: conn,
+    workspace: workspace
+  } do
+    Application.put_env(
+      :maestro,
+      :report_formats,
+      [Maestro.Report.DefaultLayout, Maestro.Report.JUnit] ++
+        Enum.map(~w(CSV MD JSON), &Module.concat(__MODULE__, "Format#{&1}"))
+    )
+
+    on_exit(fn -> Application.delete_env(:maestro, :report_formats) end)
+
+    resource_fixture!(workspace, :suite, "checkout/smoke", suite_with_assert("checkout-smoke", 1))
+    {:ok, run_id} = Runner.run(workspace, ["checkout/smoke"])
+    wait_until_done(run_id)
+
+    {:ok, view, _html} = live(conn, ~p"/workspace/#{workspace.id}/reports/#{run_id}")
+
+    download = "/workspace/#{workspace.id}/reports/#{run_id}/download"
+
+    for name <- ~w(html junit csv md json) do
+      assert has_element?(view, "#report-formats a[href='#{download}?format=#{name}']")
+    end
+
+    assert has_element?(view, "#report-formats a[href='#{download}?format=csv']", "CSV")
+    # Exactly the 5 dropdown entries link to a download: no other button does.
+    assert render(view) |> String.split(~s(href="#{download})) |> length() == 6
   end
 
   test "updates live as broadcasts arrive", %{conn: conn, workspace: workspace} do

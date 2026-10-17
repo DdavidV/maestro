@@ -22,12 +22,32 @@
     </:eyebrow>
     <:subtitle>Every suite, testcase, step and assertion in this run.</:subtitle>
     <:actions>
-      <.button
-        :for={{query, label} <- @download_formats}
-        href={"/workspace/#{@workspace.id}/reports/#{@run_id}/download#{query}"}
-      >
-        <.icon name="hero-arrow-down-tray-mini" class="size-4" /> {label}
-      </.button>
+      <div id="report-formats" class="dropdown dropdown-end">
+        <div
+          tabindex="0"
+          role="button"
+          class="btn btn-sm gap-1.5 border-base-300 bg-base-100 font-medium shadow-xs hover:bg-base-200"
+        >
+          <.icon name="hero-arrow-down-tray-mini" class="size-4" /> Download
+          <.icon name="hero-chevron-down-mini" class="size-4 text-base-content/50" />
+        </div>
+        <ul
+          tabindex="0"
+          class="dropdown-content z-30 mt-1 w-60 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg"
+        >
+          <li class="section-label px-2.5 pt-1.5 pb-1">Download as</li>
+          <li :for={format <- @download_formats}>
+            <a
+              href={"/workspace/#{@workspace.id}/reports/#{@run_id}/download#{format.query}"}
+              class="flex items-center gap-2 rounded-field px-2.5 py-1.5 text-sm hover:bg-base-200"
+            >
+              <.icon name="hero-arrow-down-tray-mini" class="size-4 text-base-content/40" />
+              <span class="flex-1 truncate">{format.label}</span>
+              <span class="font-mono text-xs text-base-content/40">.{format.extension}</span>
+            </a>
+          </li>
+        </ul>
+      </div>
     </:actions>
   </.header>
 

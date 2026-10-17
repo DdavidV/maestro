@@ -288,7 +288,7 @@ defmodule MaestroWeb.API.RunHandlerTest do
       {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
       wait_until_done(run_id)
 
-      conn = get(conn, ~p"/api/runs/#{run_id}/report")
+      conn = get(conn, ~p"/api/runs/#{run_id}/report?format=html")
 
       assert conn.status == 200
       assert get_resp_header(conn, "content-type") |> List.first() =~ "text/html"
@@ -296,8 +296,23 @@ defmodule MaestroWeb.API.RunHandlerTest do
     end
 
     test "404s for an unknown run_id", %{conn: conn} do
-      conn = get(conn, ~p"/api/runs/does-not-exist/report")
+      conn = get(conn, ~p"/api/runs/does-not-exist/report?format=html")
       assert json_response(conn, 404)
+    end
+
+    test "400s without a format, listing the available ones", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
+      wait_until_done(run_id)
+
+      conn = get(conn, ~p"/api/runs/#{run_id}/report")
+
+      assert %{"error" => %{"missing_format" => true, "available" => available}} =
+               json_response(conn, 400)
+
+      assert "html" in available
     end
 
     test "?format=junit serves JUnit XML even when it isn't configured", %{
@@ -338,7 +353,7 @@ defmodule MaestroWeb.API.RunHandlerTest do
 
       conn = post(conn, ~p"/api/runs/#{run_id}/report")
 
-      assert %{"run_id" => ^run_id, "path" => path} = json_response(conn, 201)
+      assert %{"run_id" => ^run_id, "paths" => %{"html" => path}} = json_response(conn, 201)
       assert File.exists?(path)
     end
 
@@ -358,9 +373,11 @@ defmodule MaestroWeb.API.RunHandlerTest do
 
       conn = post(conn, ~p"/api/runs/#{run_id}/report")
 
-      assert %{"path" => path, "paths" => %{"html" => path, "junit" => xml_path}} =
+      assert %{"paths" => %{"html" => path, "junit" => xml_path} = paths} =
                json_response(conn, 201)
 
+      refute Map.has_key?(json_response(conn, 201), "path")
+      assert map_size(paths) == 2
       assert String.ends_with?(path, ".html")
       assert File.read!(xml_path) =~ "<testsuites"
     end

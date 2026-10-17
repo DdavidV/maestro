@@ -77,7 +77,7 @@ defmodule Mix.Tasks.Maestro.DemoReport do
 
   @doc "The fixed path this task writes `format`'s showcase report to."
   @spec report_path(module) :: String.t()
-  def report_path(format \\ Maestro.Report.Format.default()) do
+  def report_path(format) do
     Path.join(@report_dir, "showcase.#{Maestro.Report.Format.extension(format)}")
   end
 

@@ -1,7 +1,7 @@
 defmodule Maestro.Report.DefaultLayout do
   @moduledoc """
-  Maestro's built-in HTML `Maestro.Report.Format` (name `"html"`, the
-  default format): a single self-contained HTML
+  Maestro's built-in HTML `Maestro.Report.Format` (name `"html"`): a
+  single self-contained HTML
   document (inline `<style>`, no external CSS/JS/font dependency) meant to
   be opened directly via `file://`, no server required.
 

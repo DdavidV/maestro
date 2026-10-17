@@ -51,15 +51,6 @@ defmodule Maestro.Report.FormatTest do
 
   test "configured/0 defaults to just the built-in HTML report" do
     assert Format.configured() == [DefaultLayout]
-    assert Format.default() == DefaultLayout
-  end
-
-  test "default/0 is the first configured format" do
-    Application.put_env(:maestro, :report_formats, [JUnit, DefaultLayout])
-    assert Format.default() == JUnit
-
-    Application.put_env(:maestro, :report_formats, [])
-    assert Format.default() == DefaultLayout
   end
 
   test "configured/0 reads :report_formats when set" do

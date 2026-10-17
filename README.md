@@ -75,8 +75,9 @@ Beyond the GUI, Maestro exposes a plain JSON REST API (spec in
   it progresses.
 - **`GET /api/runs/{run_id}`** (optionally `?suite_id=&testcase_id=`) fetch the full result, or
   drill into one suite/testcase.
-- **`GET /api/runs/{run_id}/report`** fetch the same HTML report the GUI renders, standalone,
-  or another format via `?format=` (e.g. `?format=junit` for JUnit XML to publish in CI).
+- **`GET /api/runs/{run_id}/report?format=`** fetch a report in the given format, e.g.
+  `?format=html` for the same HTML report the GUI renders, or `?format=junit` for JUnit XML to
+  publish in CI.
 - **`POST /api/runs/{run_id}/report`** write the configured report formats to disk on the server
   (or just one, via `?format=`), returning their paths.
 
@@ -131,8 +132,8 @@ standalone, all of it has a working default out of the box.
   Maestro's own, if `:host_app` isn't set either.
 - **`:report_formats`** the list of `Maestro.Report.Format` modules a report is written in after
   every run, one file per format (e.g. `[Maestro.Report.DefaultLayout, Maestro.Report.JUnit]` for
-  the HTML report plus JUnit XML for CI). The first one is the default format, used whenever none
-  is asked for explicitly. A host can add its own formats, including its own HTML report.
+  the HTML report plus JUnit XML for CI). A host can add its own formats, including its own HTML
+  report. There is no default format: fetching or writing a single report always names one.
   Defaults to `[Maestro.Report.DefaultLayout]`. See [docs/report.md](docs/report.md).
 - **`:auto_report`** (boolean) whether reports are automatically generated to disk when a run
   finishes. Defaults to `true`; set to `false` if a host only ever wants reports on demand

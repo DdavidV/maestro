@@ -32,10 +32,10 @@ To generate (or regenerate) every configured format manually:
 #=> {:ok, %{Maestro.Report.DefaultLayout => ".../maestro_report_<run_id>.html", ...}}
 ```
 
-Or just one format (the default format if none is given):
+Or just one format, named explicitly (there is no default format):
 
 ```elixir
-:ok = Maestro.generate_report(run_id)
+:ok = Maestro.generate_report(run_id, Maestro.Report.DefaultLayout)
 :ok = Maestro.generate_report(run_id, Maestro.Report.JUnit)
 ```
 
@@ -50,7 +50,7 @@ To get the HTML itself as a string, with no filesystem write at all
 (embedding it elsewhere, streaming it, choosing your own write target):
 
 ```elixir
-{:ok, html} = Maestro.render_report(run_id)
+{:ok, html} = Maestro.render_report(run_id, Maestro.Report.DefaultLayout)
 {:ok, xml} = Maestro.render_report(run_id, Maestro.Report.JUnit)
 ```
 
@@ -62,25 +62,25 @@ for partial results without waiting for the run to finish.
 An unknown `run_id` fails the same way `Maestro.result/1` does:
 
 ```elixir
-Maestro.render_report("does-not-exist")
+Maestro.render_report("does-not-exist", Maestro.Report.DefaultLayout)
 #=> {:error, :not_found}
 
-Maestro.generate_report("does-not-exist")
+Maestro.generate_report("does-not-exist", Maestro.Report.DefaultLayout)
 #=> {:error, :not_found}
 ```
 
-`generate_report/1` can also fail on the write itself (disk full,
+`generate_report/2` can also fail on the write itself (disk full,
 permission denied):
 
 ```elixir
-Maestro.generate_report(run_id)
+Maestro.generate_report(run_id, Maestro.Report.DefaultLayout)
 #=> {:error, {:write_failed, reason}}
 ```
 
 ## Where a report is written
 
 ```elixir
-Maestro.Report.report_path(run_id)
+Maestro.Report.report_path(run_id, Maestro.Report.DefaultLayout)
 #=> "<report_dir>/<workspace_id>/maestro_report_<run_id>.html"
 
 Maestro.Report.report_path(run_id, Maestro.Report.JUnit)
@@ -96,7 +96,7 @@ config :maestro, :report_dir, "/path/to/your/reports"
 Defaults to `priv/reports` under Maestro's own `priv_dir` if unset
 same convention `Maestro.Resources.resource_dir/0` uses for suite/
 scenario/dataset/template files (see [maestro.md](maestro.md)).
-`generate_report/1` creates `report_dir` first if it doesn't exist yet,
+`generate_report/2` creates `report_dir` first if it doesn't exist yet,
 and overwrites any existing report file for the same `run_id`.
 
 ## Disabling automatic generation
@@ -106,7 +106,7 @@ config :maestro, :auto_report, false
 ```
 
 With this set, a report is only ever produced when you call
-`Maestro.render_report/1`, `Maestro.generate_report/1` or
+`Maestro.render_report/2`, `Maestro.generate_report/2` or
 `Maestro.generate_reports/1` yourself.
 
 ## Report formats
@@ -123,21 +123,23 @@ Every format in this list is written after each run, one file per format
 list). Unset, it defaults to `[Maestro.Report.DefaultLayout]` just the
 HTML report.
 
-The **first** format in the list is the *default* format, used whenever a
-format isn't asked for explicitly: `Maestro.render_report/1`,
-`Maestro.generate_report/1`, `GET /api/runs/{run_id}/report` without
-`?format=`, and the GUI's main download button.
+There is **no default format**: anything that renders or writes a single
+report names its format explicitly. Every configured format, plus the
+built-in `html` and `junit` ones, can be fetched on demand by name, whether
+or not it's written automatically:
 
-Every configured format, plus the built-in `html` and `junit` ones, can
-also be fetched on demand by name, whether or not it's written
-automatically:
-
+- Elixir: `Maestro.render_report(run_id, Maestro.Report.JUnit)`,
+  `Maestro.generate_report(run_id, Maestro.Report.JUnit)`.
 - REST: `GET /api/runs/{run_id}/report?format=junit` (rendered, not
-  written), `POST /api/runs/{run_id}/report?format=junit` (written to disk;
-  without `format`, writes every configured format and returns each path).
-- GUI: one download button per format on a run's report page.
+  written; `format` is required), `POST /api/runs/{run_id}/report?format=junit`
+  (written to disk, returns `path` and `paths`). `POST` without `format`
+  writes every configured format and returns each file in `paths`, keyed
+  by format name.
+- GUI: a run's report page has one "Download" dropdown listing every
+  format.
 
-An unknown `format` name gets a `400` listing the available names.
+A missing (on `GET`) or unknown `format` gets a `400` listing the available
+names.
 
 ## JUnit XML
 
@@ -204,10 +206,9 @@ is required; the optional callbacks default to an HTML report's values:
 @callback content_type() :: String.t()  # optional, defaults to "text/html"
 ```
 
-A custom HTML report only needs `render/1`. Put it first in
-`:report_formats` to make it the default instead of the built-in one (it
-also takes over the `html` name, since a configured format shadows a
-built-in one with the same name):
+A custom HTML report only needs `render/1`. Configure it in place of the
+built-in one (it also takes over the `html` name, since a configured format
+shadows a built-in one with the same name):
 
 ```elixir
 config :maestro, :report_formats, [MyApp.Maestro.ReportLayout, Maestro.Report.JUnit]
@@ -260,9 +261,9 @@ defmodule MyApp.Maestro.CsvReport do
 end
 ```
 
-`Maestro.render_report/2`/`Maestro.generate_report/2` both also accept a
-format module directly, as a second argument, for a one-off call
-without touching the global config:
+`Maestro.render_report/2`/`Maestro.generate_report/2` take any format
+module, configured or not, for a one-off call without touching the global
+config:
 
 ```elixir
 {:ok, html} = Maestro.render_report(run_id, MyApp.Maestro.ReportLayout)

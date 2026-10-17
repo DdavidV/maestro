@@ -528,7 +528,7 @@ defmodule Maestro.Core.RunnerTest do
     end
 
     defp report_path!(run_id) do
-      {:ok, path} = Maestro.Report.report_path(run_id)
+      {:ok, path} = Maestro.Report.report_path(run_id, Maestro.Report.DefaultLayout)
       path
     end
 

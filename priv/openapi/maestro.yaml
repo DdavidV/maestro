@@ -166,12 +166,19 @@ paths:
     get:
       operationId: getRunReport
       summary: >
-        Render the run's current result as a report (the HTML report by default, or e.g. JUnit
-        XML via `format=junit`), without writing it to disk.
+        Render the run's current result as a report in the given `format` (e.g. `html`, or `junit`
+        for JUnit XML), without writing it to disk.
       tags: [Reports]
       parameters:
         - $ref: "#/components/parameters/RunId"
-        - $ref: "#/components/parameters/ReportFormat"
+        - name: format
+          in: query
+          required: true
+          description: >
+            Report format name: `html` (the HTML report), `junit` (JUnit XML), or any custom
+            format the host has configured.
+          schema:
+            type: string
       responses:
         "200":
           description: The rendered report, served with its format's content type.
@@ -183,7 +190,7 @@ paths:
               schema:
                 type: string
         "400":
-          description: Unknown `format`; the response lists the available ones.
+          description: Missing or unknown `format`; the response lists the available ones.
           content:
             application/json:
               schema:
@@ -237,8 +244,8 @@ components:
       in: query
       required: false
       description: >
-        Report format name: `html` (the default HTML report), `junit` (JUnit XML), or any custom
-        format the host has configured.
+        Report format name: `html` (the HTML report), `junit` (JUnit XML), or any custom format the
+        host has configured. Omit it to write every configured format.
       schema:
         type: string
     RunId:
@@ -417,15 +424,14 @@ components:
       type: object
       required:
         - run_id
-        - path
+        - paths
       properties:
         run_id:
           type: string
         path:
           type: string
           description: >
-            Absolute path of the first written report file (the HTML report, with the default
-            configuration).
+            Absolute path of the written report file, only when a single `format` was requested.
         paths:
           type: object
           description: Absolute path of every written report file, keyed by format name.

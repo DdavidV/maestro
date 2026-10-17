@@ -99,22 +99,24 @@ defmodule MaestroWeb.ReportLive.Show do
     |> assign(:model, Model.build(run_result))
   end
 
-  # One `{query_string, button_label}` per downloadable format: the default
-  # format first, at the plain download URL, then every other available
-  # format via `?format=`.
+  # Every available format, each an entry in the header's single "Download"
+  # dropdown (via an explicit `?format=`), so any number of configured
+  # formats never adds more than that one button to the header.
   defp download_formats do
-    default = Format.default()
-    others = Enum.reject(Format.available(), &(&1 == default))
-
-    [{"", "Download #{format_label(default)}"}] ++
-      Enum.map(others, &{"?format=#{Format.name(&1)}", format_label(&1)})
+    for format <- Format.available() do
+      %{
+        query: "?format=#{URI.encode_www_form(Format.name(format))}",
+        label: format_label(format),
+        extension: Format.extension(format)
+      }
+    end
   end
 
   defp format_label(format) do
     case Format.name(format) do
       "html" -> "HTML report"
       "junit" -> "JUnit XML"
-      name -> name
+      name -> String.upcase(name)
     end
   end
 end

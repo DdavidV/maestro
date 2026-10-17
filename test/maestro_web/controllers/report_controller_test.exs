@@ -42,21 +42,22 @@ defmodule MaestroWeb.ReportControllerTest do
     end
   end
 
-  test "downloads a standalone HTML report matching Maestro.render_report/1's output", %{
-    conn: conn,
-    workspace: workspace
-  } do
+  test "?format=html downloads a standalone HTML report matching Maestro.render_report/2's output",
+       %{
+         conn: conn,
+         workspace: workspace
+       } do
     resource_fixture!(workspace, :suite, "checkout/smoke", suite("checkout-smoke"))
 
     {:ok, run_id} = Runner.run(workspace, ["checkout/smoke"])
     wait_until_done(run_id)
 
-    {:ok, expected_html} = Maestro.render_report(run_id)
+    {:ok, expected_html} = Maestro.render_report(run_id, Maestro.Report.DefaultLayout)
 
-    conn = get(conn, ~p"/workspace/#{workspace.id}/reports/#{run_id}/download")
+    conn = get(conn, ~p"/workspace/#{workspace.id}/reports/#{run_id}/download?format=html")
 
     assert conn.status == 200
-    # `Maestro.render_report/1` stamps a fresh `generated_at` on every call
+    # `Maestro.render_report/2` stamps a fresh `generated_at` on every call
     # (`Model.build/1` calls `DateTime.utc_now()`), so this is the one line
     # expected to legitimately differ between the two independent calls
     # made a few microseconds apart; everything else must match exactly.
@@ -96,11 +97,26 @@ defmodule MaestroWeb.ReportControllerTest do
     {:ok, run_id} = Runner.run(workspace, ["checkout/smoke"])
     wait_until_done(run_id)
 
-    conn = get(conn, ~p"/workspace/#{workspace.id}/reports/#{run_id}/download")
+    conn = get(conn, ~p"/workspace/#{workspace.id}/reports/#{run_id}/download?format=html")
 
     assert conn.resp_body =~ "<style>"
     refute conn.resp_body =~ "<link rel=\"stylesheet\""
     refute conn.resp_body =~ "<script src="
+  end
+
+  test "a missing format redirects back to the report page with a flash", %{
+    conn: conn,
+    workspace: workspace
+  } do
+    resource_fixture!(workspace, :suite, "checkout/smoke", suite("checkout-smoke"))
+
+    {:ok, run_id} = Runner.run(workspace, ["checkout/smoke"])
+    wait_until_done(run_id)
+
+    conn = get(conn, ~p"/workspace/#{workspace.id}/reports/#{run_id}/download")
+
+    assert redirected_to(conn) == ~p"/workspace/#{workspace.id}/reports/#{run_id}"
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Choose a report format"
   end
 
   test "an unknown run_id redirects with a flash instead of downloading", %{

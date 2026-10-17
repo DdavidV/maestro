@@ -283,18 +283,16 @@ defmodule Maestro do
     do: Maestro.Core.Runner.result(run_id, suite_id, testcase_id)
 
   @doc """
-  Renders `run_id`'s current result as a report string, without writing
-  it anywhere: the default format (`Maestro.Report.Format.default/0`) unless
-  another `Maestro.Report.Format` is passed (e.g. `Maestro.Report.JUnit`).
+  Renders `run_id`'s current result as a report string in `format` (any
+  `Maestro.Report.Format`, e.g. `Maestro.Report.DefaultLayout` for HTML or
+  `Maestro.Report.JUnit`), without writing it anywhere.
   See `Maestro.Report.render/2`.
   """
   @spec render_report(run_id, module) :: {:ok, String.t()} | {:error, :not_found}
-  def render_report(run_id, format \\ Maestro.Report.Format.default()),
-    do: Maestro.Report.render(run_id, format)
+  def render_report(run_id, format), do: Maestro.Report.render(run_id, format)
 
   @doc """
-  Renders and writes `run_id`'s report in one format (default:
-  `Maestro.Report.Format.default/0`) to disk, under
+  Renders and writes `run_id`'s report in `format` to disk, under
   `Maestro.Report.report_dir/0`'s per-workspace subdirectory (see
   `Maestro.Report.report_path/2`). The automatic post-run generation writes
   every configured format instead, see `generate_reports/1`.
@@ -302,8 +300,7 @@ defmodule Maestro do
   """
   @spec generate_report(run_id, module) ::
           :ok | {:error, :not_found | {:write_failed, term}}
-  def generate_report(run_id, format \\ Maestro.Report.Format.default()),
-    do: Maestro.Report.generate(run_id, format)
+  def generate_report(run_id, format), do: Maestro.Report.generate(run_id, format)
 
   @doc """
   Writes `run_id`'s report in every configured `Maestro.Report.Format`

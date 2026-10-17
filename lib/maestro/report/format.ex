@@ -39,9 +39,9 @@ defmodule Maestro.Report.Format do
   its own file, so each format's `extension/0` must be unique within it. If
   unset, it defaults to `[Maestro.Report.DefaultLayout]`.
 
-  The **first** format in the list is the default one: what's rendered when
-  no format is asked for (`Maestro.render_report/1`, `GET
-  /api/runs/{run_id}/report` without `?format=`, the GUI's report download).
+  There is no default format: every call that renders or writes a single
+  report names its format explicitly (a module in Elixir, `?format=<name>`
+  over REST/the GUI). Only "write every configured format" needs no format.
   """
 
   alias Maestro.Report.Model
@@ -63,14 +63,6 @@ defmodule Maestro.Report.Format do
   def configured do
     Application.get_env(:maestro, :report_formats, [Maestro.Report.DefaultLayout])
   end
-
-  @doc """
-  The default format, used whenever none is asked for explicitly: the first
-  `configured/0` format, or `Maestro.Report.DefaultLayout` if that list is
-  empty.
-  """
-  @spec default() :: module
-  def default, do: List.first(configured()) || Maestro.Report.DefaultLayout
 
   @doc """
   Every format that can be requested by name: the configured ones first,

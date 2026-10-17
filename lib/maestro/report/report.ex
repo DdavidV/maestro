@@ -5,30 +5,24 @@ defmodule Maestro.Report do
 
   Fetches the run's current `t:Maestro.run_result/0` via
   `Maestro.Core.Runner.result/1`, builds a `Maestro.Report.Model.t()` from
-  it, and hands that to a `Maestro.Report.Format` by default
-  `Maestro.Report.Format.default/0`, the first format in
-  `config :maestro, :report_formats` (`Maestro.Report.DefaultLayout`, the
-  HTML report, unless configured otherwise).
+  it, and hands that to a `Maestro.Report.Format` (e.g.
+  `Maestro.Report.DefaultLayout` for HTML, `Maestro.Report.JUnit` for JUnit
+  XML). There's no default format: `render/2`, `generate/2` and
+  `report_path/2` always take the format explicitly.
 
-  `render/2` returns the HTML as a string with no filesystem interaction,
-  for a caller that wants the markup itself (embedding, streaming, a
+  `render/2` returns the report as a string with no filesystem interaction,
+  for a caller that wants the content itself (embedding, streaming, a
   different write target). `generate/2` is `render/2` plus writing the
-  result to `report_path(run_id)` under `report_dir/0`, creating that
-  directory first if needed the function `Maestro.Core.Runner` calls
-  automatically after every run finishes (see `config :maestro,
-  :auto_report`, on by default), and the one a caller invokes manually to
-  regenerate a report (e.g. with a different layout, after disabling
-  auto-generation, or for a still-`:running` run to inspect partial
-  results).
-
-  Both accept a `format` override (second argument), e.g.
-  `Maestro.Report.JUnit`, so a one-off manual call doesn't require changing
-  the global `:report_formats` config.
+  result to `report_path(run_id, format)` under `report_dir/0`, creating
+  that directory first if needed, e.g. to regenerate one format after
+  disabling auto-generation, or for a still-`:running` run to inspect
+  partial results.
 
   `generate_all/2` writes every configured format
   (`Maestro.Report.Format.configured/0`) in one go, each to its own file
   named by the format's extension, and is what `Maestro.Core.Runner`
-  calls automatically after every run.
+  calls automatically after every run (see `config :maestro,
+  :auto_report`, on by default).
   """
 
   alias Maestro.Core.Runner
@@ -61,7 +55,7 @@ defmodule Maestro.Report do
   workspace to bucket under otherwise.
   """
   @spec report_path(Maestro.run_id(), module) :: {:ok, String.t()} | {:error, :not_found}
-  def report_path(run_id, format \\ Format.default()) do
+  def report_path(run_id, format) do
     with {:ok, workspace_id} <- Runner.workspace_id(run_id) do
       file = "maestro_report_#{run_id}.#{Format.extension(format)}"
       {:ok, Path.join([report_dir(), workspace_id, file])}
@@ -69,8 +63,7 @@ defmodule Maestro.Report do
   end
 
   @doc """
-  Renders `run_id`'s current result as a self-contained HTML string, via
-  `format` (default: `Maestro.Report.Format.default/0`).
+  Renders `run_id`'s current result as a report string in `format`.
 
   Returns `{:error, :not_found}` if `run_id` doesn't resolve (unknown, or
   never existed) same `:not_found` convention `Maestro.result/1` uses. A
@@ -81,14 +74,14 @@ defmodule Maestro.Report do
   swallows it so a bad layout can't crash a run.
   """
   @spec render(Maestro.run_id(), module) :: {:ok, String.t()} | {:error, :not_found}
-  def render(run_id, format \\ Format.default()) do
+  def render(run_id, format) do
     with {:ok, run_result} <- Runner.result(run_id) do
       {:ok, format.render(Model.build(run_result))}
     end
   end
 
   @doc """
-  `render/2` plus writing the result to `report_path(run_id)`, creating
+  `render/2` plus writing the result to `report_path(run_id, format)`, creating
   `report_dir/0` first if it doesn't exist yet. Overwrites any existing
   report file for the same `run_id`.
 
@@ -107,7 +100,7 @@ defmodule Maestro.Report do
   """
   @spec generate(Maestro.run_id(), module) ::
           :ok | {:error, :not_found | {:write_failed, term}}
-  def generate(run_id, format \\ Format.default()) do
+  def generate(run_id, format) do
     with {:ok, body} <- render(run_id, format),
          {:ok, path} <- report_path(run_id, format),
          :ok <- File.mkdir_p(Path.dirname(path)),

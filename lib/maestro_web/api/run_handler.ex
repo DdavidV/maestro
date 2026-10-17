@@ -85,9 +85,10 @@ defmodule MaestroWeb.API.RunHandler do
   @doc """
   getRunReport: GET /runs/{run_id}/report?format= -> Maestro.render_report/2.
 
-  `format` names any `Maestro.Report.Format.available/0` format (`html`,
-  `junit`, or a host's own); omitted, it's `Maestro.Report.Format.default/0`.
-  Served with that format's own content type.
+  `format` is required and names any `Maestro.Report.Format.available/0`
+  format (`html`, `junit`, or a host's own). Served with that format's own
+  content type. A missing or unknown `format` gets a 400 listing the
+  available names.
   """
   def get_run_report(conn, %{"run_id" => run_id} = params) do
     with {:ok, format} <- requested_format(params),
@@ -96,8 +97,11 @@ defmodule MaestroWeb.API.RunHandler do
       |> put_resp_content_type(Format.content_type(format))
       |> send_resp(200, body)
     else
-      {:error, :unknown_format} -> unknown_format(conn, params)
-      {:error, :not_found} -> json(conn, 404, %{error: :not_found})
+      {:error, reason} when reason in [:unknown_format, :missing_format] ->
+        unknown_format(conn, params)
+
+      {:error, :not_found} ->
+        json(conn, 404, %{error: :not_found})
     end
   end
 
@@ -106,9 +110,9 @@ defmodule MaestroWeb.API.RunHandler do
 
   With `format`, writes just that format (`Maestro.generate_report/2`).
   Without it, writes every configured format (`Maestro.generate_reports/1`),
-  same as what happens automatically after a run. `path` is the first
-  written file (the HTML report, by default); `paths` maps every written
-  format's name to its file.
+  same as what happens automatically after a run. `paths` maps every
+  written format's name to its file; a single-format write also returns
+  that file as `path`.
   """
   def create_run_report(conn, %{"run_id" => run_id} = params) do
     case Map.fetch(params, "format") do
@@ -138,8 +142,7 @@ defmodule MaestroWeb.API.RunHandler do
     case Maestro.generate_reports(run_id) do
       {:ok, written} ->
         paths = Map.new(written, fn {format, path} -> {Format.name(format), path} end)
-        first = Enum.find(Format.configured(), &Map.has_key?(written, &1))
-        json(conn, 201, %{run_id: run_id, path: written[first], paths: paths})
+        json(conn, 201, %{run_id: run_id, paths: paths})
 
       {:error, :not_found} ->
         json(conn, 404, %{error: :not_found})
@@ -153,16 +156,17 @@ defmodule MaestroWeb.API.RunHandler do
   end
 
   defp requested_format(%{"format" => name}) when is_binary(name), do: Format.find(name)
-  defp requested_format(_params), do: {:ok, Format.default()}
+  defp requested_format(_params), do: {:error, :missing_format}
 
-  defp unknown_format(conn, params) do
-    json(conn, 400, %{
-      error: %{
-        unknown_format: params["format"],
-        available: Enum.map(Format.available(), &Format.name/1)
-      }
-    })
+  defp unknown_format(conn, %{"format" => name}) when is_binary(name) do
+    json(conn, 400, %{error: %{unknown_format: name, available: available_names()}})
   end
+
+  defp unknown_format(conn, _params) do
+    json(conn, 400, %{error: %{missing_format: true, available: available_names()}})
+  end
+
+  defp available_names, do: Enum.map(Format.available(), &Format.name/1)
 
   defp fetch_workspace(workspace_id) do
     case Maestro.Workspaces.get(workspace_id) do

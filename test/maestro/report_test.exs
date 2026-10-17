@@ -70,7 +70,7 @@ defmodule Maestro.ReportTest do
 
   describe "render/2" do
     test "returns {:error, :not_found} for an unknown run_id" do
-      assert Report.render("does_not_exist") == {:error, :not_found}
+      assert Report.render("does_not_exist", Maestro.Report.DefaultLayout) == {:error, :not_found}
     end
 
     test "returns {:ok, html} containing the run's suite ids on a completed run", %{
@@ -79,7 +79,7 @@ defmodule Maestro.ReportTest do
       assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
       wait_until_done(run_id)
 
-      assert {:ok, html} = Report.render(run_id)
+      assert {:ok, html} = Report.render(run_id, Maestro.Report.DefaultLayout)
       assert html =~ "checkout"
       assert html =~ run_id
     end
@@ -94,7 +94,8 @@ defmodule Maestro.ReportTest do
 
   describe "generate/2" do
     test "returns {:error, :not_found} for an unknown run_id" do
-      assert Report.generate("does_not_exist") == {:error, :not_found}
+      assert Report.generate("does_not_exist", Maestro.Report.DefaultLayout) ==
+               {:error, :not_found}
     end
 
     test "writes a file to report_path/1, creating report_dir if missing", %{
@@ -106,9 +107,9 @@ defmodule Maestro.ReportTest do
       assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
       wait_until_done(run_id)
 
-      assert Report.generate(run_id) == :ok
+      assert Report.generate(run_id, Maestro.Report.DefaultLayout) == :ok
 
-      assert {:ok, path} = Report.report_path(run_id)
+      assert {:ok, path} = Report.report_path(run_id, Maestro.Report.DefaultLayout)
       assert File.exists?(path)
       assert File.read!(path) =~ "checkout"
     end
@@ -118,7 +119,7 @@ defmodule Maestro.ReportTest do
       wait_until_done(run_id)
 
       assert Report.generate(run_id, DummyLayout) == :ok
-      assert {:ok, path} = Report.report_path(run_id)
+      assert {:ok, path} = Report.report_path(run_id, DummyLayout)
       assert File.read!(path) == "dummy layout output"
     end
 
@@ -129,9 +130,9 @@ defmodule Maestro.ReportTest do
       assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
       wait_until_done(run_id)
 
-      assert Report.generate(run_id) == :ok
+      assert Report.generate(run_id, Maestro.Report.DefaultLayout) == :ok
 
-      assert {:ok, path} = Report.report_path(run_id)
+      assert {:ok, path} = Report.report_path(run_id, Maestro.Report.DefaultLayout)
       assert path == Path.join([report_dir, workspace.id, "maestro_report_#{run_id}.html"])
       assert File.exists?(path)
     end
@@ -146,11 +147,11 @@ defmodule Maestro.ReportTest do
       assert {:ok, run_id_2} = Runner.run(other_workspace, [inline_suite("checkout")])
       wait_until_done(run_id_2)
 
-      assert Report.generate(run_id_1) == :ok
-      assert Report.generate(run_id_2) == :ok
+      assert Report.generate(run_id_1, Maestro.Report.DefaultLayout) == :ok
+      assert Report.generate(run_id_2, Maestro.Report.DefaultLayout) == :ok
 
-      assert {:ok, path_1} = Report.report_path(run_id_1)
-      assert {:ok, path_2} = Report.report_path(run_id_2)
+      assert {:ok, path_1} = Report.report_path(run_id_1, Maestro.Report.DefaultLayout)
+      assert {:ok, path_2} = Report.report_path(run_id_2, Maestro.Report.DefaultLayout)
       assert Path.dirname(path_1) != Path.dirname(path_2)
       assert File.exists?(path_1)
       assert File.exists?(path_2)
@@ -175,7 +176,8 @@ defmodule Maestro.ReportTest do
 
       Application.put_env(:maestro, :report_dir, Path.join(blocking_file, "reports"))
 
-      assert {:error, {:write_failed, _reason}} = Report.generate(run_id)
+      assert {:error, {:write_failed, _reason}} =
+               Report.generate(run_id, Maestro.Report.DefaultLayout)
     end
   end
 
@@ -187,7 +189,7 @@ defmodule Maestro.ReportTest do
       formats = [Maestro.Report.DefaultLayout, Maestro.Report.JUnit]
       assert {:ok, paths} = Report.generate_all(run_id, formats)
 
-      assert {:ok, html_path} = Report.report_path(run_id)
+      assert {:ok, html_path} = Report.report_path(run_id, Maestro.Report.DefaultLayout)
       assert {:ok, xml_path} = Report.report_path(run_id, Maestro.Report.JUnit)
 
       assert paths == %{
@@ -235,7 +237,7 @@ defmodule Maestro.ReportTest do
       assert {:error, [{DummyLayout, {:duplicate_extension, "html"}}]} =
                Report.generate_all(run_id, [Maestro.Report.DefaultLayout, DummyLayout])
 
-      assert {:ok, html_path} = Report.report_path(run_id)
+      assert {:ok, html_path} = Report.report_path(run_id, Maestro.Report.DefaultLayout)
       assert File.read!(html_path) =~ "<!DOCTYPE html>"
     end
 
