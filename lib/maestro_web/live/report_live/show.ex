@@ -13,6 +13,7 @@ defmodule MaestroWeb.ReportLive.Show do
 
   alias Maestro.Core.Runner
   alias Maestro.Core.Runner.Broadcaster
+  alias Maestro.Report.Format
   alias Maestro.Report.Model
 
   @impl true
@@ -32,6 +33,7 @@ defmodule MaestroWeb.ReportLive.Show do
          |> assign(:page_title, "Report for #{run_id}")
          |> assign(:run_id, run_id)
          |> assign(:run_result, run_result)
+         |> assign(:download_formats, download_formats())
          |> assign(:model, Model.build(run_result))}
 
       {:ok, _other_workspace_id} ->
@@ -95,5 +97,24 @@ defmodule MaestroWeb.ReportLive.Show do
     socket
     |> assign(:run_result, run_result)
     |> assign(:model, Model.build(run_result))
+  end
+
+  # One `{query_string, button_label}` per downloadable format: the default
+  # format first, at the plain download URL, then every other available
+  # format via `?format=`.
+  defp download_formats do
+    default = Format.default()
+    others = Enum.reject(Format.available(), &(&1 == default))
+
+    [{"", "Download #{format_label(default)}"}] ++
+      Enum.map(others, &{"?format=#{Format.name(&1)}", format_label(&1)})
+  end
+
+  defp format_label(format) do
+    case Format.name(format) do
+      "html" -> "HTML report"
+      "junit" -> "JUnit XML"
+      name -> name
+    end
   end
 end

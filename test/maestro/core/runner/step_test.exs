@@ -57,6 +57,36 @@ defmodule Maestro.Core.Runner.StepTest do
     end
   end
 
+  describe "run_steps/2 durations" do
+    test "every result records how long its execution took, in microseconds" do
+      step = template_step(client: "test_client_slow", payload: %{}, dataset: %{data: %{}})
+
+      assert {:ok, {[result], _saved}} = Step.run_steps([step])
+      assert is_integer(result.duration)
+      assert result.duration >= 200_000
+    end
+
+    test "each row of a rows dataset gets its own duration" do
+      step =
+        template_step(
+          payload: %{"n" => "{{n}}"},
+          dataset: %{rows: [%{"n" => 1}, %{"n" => 2}, %{"n" => 3}]}
+        )
+
+      assert {:ok, {results, _saved}} = Step.run_steps([step])
+      assert length(results) == 3
+      assert Enum.all?(results, &(is_integer(&1.duration) and &1.duration >= 0))
+    end
+
+    test "a step that fails before dispatching still records a duration" do
+      step = template_step(payload: %{"x" => "{{missing}}"}, dataset: %{data: %{}})
+
+      assert {:error, {[result], _saved}} = Step.run_steps([step])
+      assert %ClientError{stage: :interpolation} = result.response
+      assert is_integer(result.duration)
+    end
+  end
+
   describe "run_steps/2 with a $generated dataset value" do
     test "resolves through the full pipeline into the actual sent payload" do
       step =

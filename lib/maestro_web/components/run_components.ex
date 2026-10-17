@@ -82,11 +82,13 @@ defmodule MaestroWeb.RunComponents do
         failed: Enum.count(suites, &(&1.status == :error)),
         in_progress: Enum.count(suites, &(&1.status in [:pending, :running])),
         tc_passed: Enum.count(testcases, &(&1.status == :ok)),
-        tc_total: length(testcases)
+        tc_total: length(testcases),
+        duration:
+          suites |> Enum.map(&Map.get(&1, :duration)) |> Enum.reject(&is_nil/1) |> Enum.sum()
       )
 
     ~H"""
-    <div class="grid grid-cols-2 gap-px overflow-hidden rounded-box border border-base-300 bg-base-300 sm:grid-cols-4">
+    <div class="grid grid-cols-2 gap-px overflow-hidden rounded-box border border-base-300 bg-base-300 sm:grid-cols-5">
       <.summary_tile label="Suites" value={@total} />
       <.summary_tile label="Passed" value={@passed} tone="text-success" />
       <.summary_tile label="Failed" value={@failed} tone={@failed > 0 && "text-error"} />
@@ -95,6 +97,7 @@ defmodule MaestroWeb.RunComponents do
         value={"#{@tc_passed}/#{@tc_total}"}
         hint={@in_progress > 0 && "#{@in_progress} suite(s) still running"}
       />
+      <.summary_tile label="Duration" value={Maestro.Util.format_duration(@duration)} />
     </div>
     """
   end
@@ -128,6 +131,7 @@ defmodule MaestroWeb.RunComponents do
         <span :if={@suite.testcases != []} class="text-xs tabular-nums text-base-content/50">
           {Enum.count(@suite.testcases, &(&1.status == :ok))}/{length(@suite.testcases)} testcases
         </span>
+        <.duration value={Map.get(@suite, :duration)} />
         <.status_badge status={@suite.status} />
       </div>
 
@@ -152,21 +156,38 @@ defmodule MaestroWeb.RunComponents do
     <div class="px-4 py-3">
       <div class="flex items-center gap-2">
         <.status_icon status={@testcase.status} />
-        <span class="font-mono text-[0.8125rem] font-medium">{@testcase.id}</span>
+        <span class="flex-1 font-mono text-[0.8125rem] font-medium">{@testcase.id}</span>
+        <.duration value={Map.get(@testcase, :duration)} />
       </div>
 
       <ol :if={@testcase.steps != []} class="mt-2 ml-2 space-y-1 border-l border-base-300 pl-4">
         <li :for={step <- @testcase.steps} class="flex items-center gap-2 text-sm">
           <.status_icon status={step.status} class="size-3.5" />
           <span class={[
-            "truncate",
+            "flex-1 truncate",
             if(step.status == :error, do: "text-error", else: "text-base-content/70")
           ]}>
             {step.name}
           </span>
+          <.duration value={Map.get(step, :duration)} />
         </li>
       </ol>
     </div>
+    """
+  end
+
+  @doc "A muted, tabular duration label (`12.4 ms`), rendering nothing for `nil`."
+  attr :value, :any, required: true
+
+  def duration(assigns) do
+    ~H"""
+    <span
+      :if={@value}
+      class="inline-flex shrink-0 items-center gap-1 text-xs tabular-nums text-base-content/50"
+      title="Duration"
+    >
+      <.icon name="hero-clock-micro" class="size-3" />{Maestro.Util.format_duration(@value)}
+    </span>
     """
   end
 

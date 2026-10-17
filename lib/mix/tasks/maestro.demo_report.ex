@@ -1,18 +1,22 @@
 defmodule Mix.Tasks.Maestro.DemoReport do
-  @shortdoc "Generates a full showcase HTML report for eyeballing Maestro.Report.DefaultLayout"
+  @shortdoc "Generates showcase reports (HTML, JUnit XML, ...) for eyeballing report formats"
 
   @moduledoc """
   Runs a real `Maestro.run/1` against a handful of hand-built demo suites
-  covering every reportable outcome, then writes the resulting HTML report
-  to a fixed, predictable path so developers can just open the same file
-  after every regeneration instead of hunting for a `run_id`-named one:
+  covering every reportable outcome, then writes the resulting report in
+  every available `Maestro.Report.Format` (the configured `:report_formats`
+  plus the built-in HTML and JUnit formats) to fixed, predictable paths so
+  developers can just open the same files after every regeneration instead
+  of hunting for `run_id`-named ones:
 
   ```bash
   mix maestro.demo_report
+  mix maestro.demo_report --format Maestro.Report.JUnit   # just one format
   ```
 
-  Writes to `tmp/reports/showcase.html` under the project root (see
-  `report_path/0`), overwriting any previous run. Disables automatic
+  `--format` may be repeated. Writes `tmp/reports/showcase.<extension>`
+  under the project root (see `report_path/1`) per format, e.g.
+  `showcase.html` and `showcase.xml`, overwriting any previous run. Disables automatic
   report generation for this run (`auto_report: false`) and renders/writes
   the report directly at the fixed path instead, so this task's demo runs
   never clutter the real `report_dir`/`priv/reports`.
@@ -41,8 +45,8 @@ defmodule Mix.Tasks.Maestro.DemoReport do
 
   This is a developer tool, not a test: nothing here is asserted against,
   it exists purely to produce a real, inspectable HTML file while
-  iterating on `Maestro.Report.DefaultLayout` (or a custom
-  `Maestro.Report.Layout`, via `--layout`).
+  iterating on `Maestro.Report.DefaultLayout`, `Maestro.Report.JUnit`, or
+  a custom `Maestro.Report.Format` (via `--format`).
   """
 
   use Mix.Task
@@ -69,18 +73,20 @@ defmodule Mix.Tasks.Maestro.DemoReport do
     def weird_result(_actual), do: :not_a_valid_result
   end
 
-  @report_path Path.join([File.cwd!(), "tmp", "reports", "showcase.html"])
+  @report_dir Path.join([File.cwd!(), "tmp", "reports"])
 
-  @doc "The fixed path this task always writes to."
-  @spec report_path() :: String.t()
-  def report_path, do: @report_path
+  @doc "The fixed path this task writes `format`'s showcase report to."
+  @spec report_path(module) :: String.t()
+  def report_path(format \\ Maestro.Report.Format.default()) do
+    Path.join(@report_dir, "showcase.#{Maestro.Report.Format.extension(format)}")
+  end
 
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
 
-    {opts, _rest, _invalid} = OptionParser.parse(args, strict: [layout: :string])
-    layout = resolve_layout(opts[:layout])
+    {opts, _rest, _invalid} = OptionParser.parse(args, strict: [format: :keep])
+    formats = resolve_formats(Keyword.get_values(opts, :format))
 
     Application.put_env(:maestro, :auto_report, false)
 
@@ -90,16 +96,18 @@ defmodule Mix.Tasks.Maestro.DemoReport do
 
     Mix.shell().info("Demo run #{run_id} finished: #{final.status}")
 
-    File.mkdir_p!(Path.dirname(@report_path))
+    File.mkdir_p!(@report_dir)
 
-    case Maestro.render_report(run_id, layout) do
-      {:ok, html} ->
-        File.write!(@report_path, html)
-        Mix.shell().info("Wrote showcase report to #{@report_path}")
+    Enum.each(formats, fn format ->
+      case Maestro.render_report(run_id, format) do
+        {:ok, body} ->
+          File.write!(report_path(format), body)
+          Mix.shell().info("Wrote #{inspect(format)} showcase report to #{report_path(format)}")
 
-      {:error, reason} ->
-        Mix.raise("Failed to render demo report: #{inspect(reason)}")
-    end
+        {:error, reason} ->
+          Mix.raise("Failed to render demo report: #{inspect(reason)}")
+      end
+    end)
   end
 
   defp demo_workspace do
@@ -115,11 +123,8 @@ defmodule Mix.Tasks.Maestro.DemoReport do
     end
   end
 
-  defp resolve_layout(nil), do: Maestro.Report.Layout.configured()
-
-  defp resolve_layout(module_name) do
-    Module.concat([module_name])
-  end
+  defp resolve_formats([]), do: Maestro.Report.Format.available()
+  defp resolve_formats(module_names), do: Enum.map(module_names, &Module.concat([&1]))
 
   defp wait_until_done(run_id, tries \\ 200) do
     {:ok, progress} = Runner.status(run_id)

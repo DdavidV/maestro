@@ -166,17 +166,28 @@ paths:
     get:
       operationId: getRunReport
       summary: >
-        Render the run's current result as a self-contained HTML report, without writing it to disk.
+        Render the run's current result as a report (the HTML report by default, or e.g. JUnit
+        XML via `format=junit`), without writing it to disk.
       tags: [Reports]
       parameters:
         - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/ReportFormat"
       responses:
         "200":
-          description: The rendered HTML report.
+          description: The rendered report, served with its format's content type.
           content:
             text/html:
               schema:
                 type: string
+            application/xml:
+              schema:
+                type: string
+        "400":
+          description: Unknown `format`; the response lists the available ones.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Unknown run_id.
           content:
@@ -186,18 +197,26 @@ paths:
     post:
       operationId: createRunReport
       summary: >
-        Render the run's current result and write it to disk, same as what happens automatically
-        after a run completes unless it is disabled.
+        Render the run's current result and write it to disk. Without `format`, writes every
+        configured report format, same as what happens automatically after a run completes unless
+        it is disabled; with `format`, writes only that one.
       tags: [Reports]
       parameters:
         - $ref: "#/components/parameters/RunId"
+        - $ref: "#/components/parameters/ReportFormat"
       responses:
         "201":
-          description: The report was written to disk.
+          description: The report(s) were written to disk.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReportGenerated"
+        "400":
+          description: Unknown `format`; the response lists the available ones.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Unknown run_id.
           content:
@@ -205,7 +224,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "500":
-          description: The report was rendered but writing it to disk failed.
+          description: Writing one or more reports to disk failed.
           content:
             application/json:
               schema:
@@ -213,6 +232,15 @@ paths:
 
 components:
   parameters:
+    ReportFormat:
+      name: format
+      in: query
+      required: false
+      description: >
+        Report format name: `html` (the default HTML report), `junit` (JUnit XML), or any custom
+        format the host has configured.
+      schema:
+        type: string
     RunId:
       name: run_id
       in: path
@@ -353,6 +381,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TestcaseRunResult"
+        duration:
+          type: integer
+          nullable: true
+          description: >
+            Wall-clock time the suite took to run, in microseconds. Null until the suite has
+            finished.
 
     TestcaseRunResult:
       type: object
@@ -370,10 +404,14 @@ components:
           type: array
           description: >
             One entry per executed step,
-            including its rendered payload/response and every assertion's
-            pass/fail detail. Left open-shaped here for what a step result contains.
+            including its rendered payload/response, every assertion's
+            pass/fail detail, and its own `duration` (integer microseconds).
+            Left open-shaped here for what a step result contains.
           items:
             type: object
+        duration:
+          type: integer
+          description: Wall-clock time the whole testcase took, in microseconds.
 
     ReportGenerated:
       type: object
@@ -385,7 +423,14 @@ components:
           type: string
         path:
           type: string
-          description: Absolute path of the written HTML report file.
+          description: >
+            Absolute path of the first written report file (the HTML report, with the default
+            configuration).
+        paths:
+          type: object
+          description: Absolute path of every written report file, keyed by format name.
+          additionalProperties:
+            type: string
 
     Error:
       type: object

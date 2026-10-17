@@ -9,6 +9,8 @@ defmodule MaestroWeb.API.RunHandler do
 
   import Plug.Conn
 
+  alias Maestro.Report.Format
+
   @doc """
   createRun: POST /run -> Maestro.run/2.
 
@@ -81,30 +83,48 @@ defmodule MaestroWeb.API.RunHandler do
   end
 
   @doc """
-  getRunReport: GET /runs/{run_id}/report -> Maestro.render_report/1
-  (always the configured default layout no layout override over REST).
-  """
-  def get_run_report(conn, %{"run_id" => run_id}) do
-    case Maestro.render_report(run_id) do
-      {:ok, html} ->
-        conn
-        |> put_resp_content_type("text/html")
-        |> send_resp(200, html)
+  getRunReport: GET /runs/{run_id}/report?format= -> Maestro.render_report/2.
 
-      {:error, :not_found} ->
-        json(conn, 404, %{error: :not_found})
+  `format` names any `Maestro.Report.Format.available/0` format (`html`,
+  `junit`, or a host's own); omitted, it's `Maestro.Report.Format.default/0`.
+  Served with that format's own content type.
+  """
+  def get_run_report(conn, %{"run_id" => run_id} = params) do
+    with {:ok, format} <- requested_format(params),
+         {:ok, body} <- Maestro.render_report(run_id, format) do
+      conn
+      |> put_resp_content_type(Format.content_type(format))
+      |> send_resp(200, body)
+    else
+      {:error, :unknown_format} -> unknown_format(conn, params)
+      {:error, :not_found} -> json(conn, 404, %{error: :not_found})
     end
   end
 
   @doc """
-  createRunReport: POST /runs/{run_id}/report -> Maestro.generate_report/1
-  (always the configured default layout).
+  createRunReport: POST /runs/{run_id}/report?format= -> writes reports to disk.
+
+  With `format`, writes just that format (`Maestro.generate_report/2`).
+  Without it, writes every configured format (`Maestro.generate_reports/1`),
+  same as what happens automatically after a run. `path` is the first
+  written file (the HTML report, by default); `paths` maps every written
+  format's name to its file.
   """
-  def create_run_report(conn, %{"run_id" => run_id}) do
-    case Maestro.generate_report(run_id) do
-      :ok ->
-        {:ok, path} = Maestro.Report.report_path(run_id)
-        json(conn, 201, %{run_id: run_id, path: path})
+  def create_run_report(conn, %{"run_id" => run_id} = params) do
+    case Map.fetch(params, "format") do
+      {:ok, _name} -> create_one_report(conn, run_id, params)
+      :error -> create_all_reports(conn, run_id)
+    end
+  end
+
+  defp create_one_report(conn, run_id, params) do
+    with {:ok, format} <- requested_format(params),
+         :ok <- Maestro.generate_report(run_id, format) do
+      {:ok, path} = Maestro.Report.report_path(run_id, format)
+      json(conn, 201, %{run_id: run_id, path: path, paths: %{Format.name(format) => path}})
+    else
+      {:error, :unknown_format} ->
+        unknown_format(conn, params)
 
       {:error, :not_found} ->
         json(conn, 404, %{error: :not_found})
@@ -112,6 +132,36 @@ defmodule MaestroWeb.API.RunHandler do
       {:error, {:write_failed, reason}} ->
         json(conn, 500, %{error: %{write_failed: inspect(reason)}})
     end
+  end
+
+  defp create_all_reports(conn, run_id) do
+    case Maestro.generate_reports(run_id) do
+      {:ok, written} ->
+        paths = Map.new(written, fn {format, path} -> {Format.name(format), path} end)
+        first = Enum.find(Format.configured(), &Map.has_key?(written, &1))
+        json(conn, 201, %{run_id: run_id, path: written[first], paths: paths})
+
+      {:error, :not_found} ->
+        json(conn, 404, %{error: :not_found})
+
+      {:error, failures} ->
+        failed =
+          Map.new(failures, fn {format, reason} -> {Format.name(format), inspect(reason)} end)
+
+        json(conn, 500, %{error: %{write_failed: failed}})
+    end
+  end
+
+  defp requested_format(%{"format" => name}) when is_binary(name), do: Format.find(name)
+  defp requested_format(_params), do: {:ok, Format.default()}
+
+  defp unknown_format(conn, params) do
+    json(conn, 400, %{
+      error: %{
+        unknown_format: params["format"],
+        available: Enum.map(Format.available(), &Format.name/1)
+      }
+    })
   end
 
   defp fetch_workspace(workspace_id) do

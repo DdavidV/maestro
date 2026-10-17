@@ -235,6 +235,26 @@ defmodule Maestro.Report.DefaultLayoutTest do
       assert html =~ "details: :not_found"
     end
 
+    test "suite, testcase and step durations are rendered" do
+      html =
+        render(
+          run_result(%{
+            suites: [
+              suite(%{
+                duration: 3_210_000,
+                testcases: [
+                  testcase(%{duration: 12_400, steps: [step(%{duration: 850})]})
+                ]
+              })
+            ]
+          })
+        )
+
+      assert html =~ "3.21 s"
+      assert html =~ "12.4 ms"
+      assert html =~ "850 µs"
+    end
+
     test "summary counts appear in the header" do
       html =
         render(

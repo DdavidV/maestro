@@ -48,6 +48,16 @@ defmodule Maestro.Core.Runner.Step do
   legitimately varies (an error body doesn't look like a success body),
   unlike a static file reference being wrong.
 
+  ## Timing
+
+  Every `t:step_result/0` carries `duration`: wall-clock microseconds
+  (monotonic clock, via `:timer.tc/1`) for that one execution, from
+  building its render context through dispatch, `save` extraction and its
+  assertions so a rows-dataset step's every row has its own duration, and
+  a step that failed before dispatching still records how long it took
+  to fail. A scenario call has no result of its own (see Assertions), so
+  it has no duration of its own either; its nested steps each have theirs.
+
   ## Assertions
 
   Only a template-step carries `assert` a scenario call has no single
@@ -77,7 +87,8 @@ defmodule Maestro.Core.Runner.Step do
           client: String.t() | nil,
           rendered: Client.rendered() | nil,
           response: term | Client.Error.t(),
-          assertions: [AssertionResult.t()]
+          assertions: [AssertionResult.t()],
+          duration: non_neg_integer
         }
 
   @doc """
@@ -124,6 +135,13 @@ defmodule Maestro.Core.Runner.Step do
   end
 
   defp run_single(step, row_or_data, saved) do
+    {duration, {[result], new_saved}} =
+      :timer.tc(fn -> execute_single(step, row_or_data, saved) end)
+
+    {[Map.put(result, :duration, duration)], new_saved}
+  end
+
+  defp execute_single(step, row_or_data, saved) do
     case build_context(row_or_data, saved) do
       {:ok, context} ->
         case dispatch(step, context) do

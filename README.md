@@ -75,8 +75,10 @@ Beyond the GUI, Maestro exposes a plain JSON REST API (spec in
   it progresses.
 - **`GET /api/runs/{run_id}`** (optionally `?suite_id=&testcase_id=`) fetch the full result, or
   drill into one suite/testcase.
-- **`GET /api/runs/{run_id}/report`** fetch the same HTML report the GUI renders, standalone.
-- **`POST /api/runs/{run_id}/report`** write that report to disk on the server, returning its path.
+- **`GET /api/runs/{run_id}/report`** fetch the same HTML report the GUI renders, standalone,
+  or another format via `?format=` (e.g. `?format=junit` for JUnit XML to publish in CI).
+- **`POST /api/runs/{run_id}/report`** write the configured report formats to disk on the server
+  (or just one, via `?format=`), returning their paths.
 
 The API is scoped to running suites/test plans and reading their status/results/reports only.
 Creating, editing, or deleting workspaces and resources is a GUI-only capability, never exposed
@@ -127,10 +129,12 @@ standalone, all of it has a working default out of the box.
 - **`:report_dir`** root directory generated HTML reports are written under (each workspace gets
   its own subdirectory beneath it). Defaults to `reports` under `:host_app`'s `priv_dir` (or
   Maestro's own, if `:host_app` isn't set either.
-- **`:report_layout`** a module implementing the `Maestro.Report.Layout` behaviour, for a host that
-  wants to fully customize the generated HTML report's markup/styling. Defaults to the built-in
-  `Maestro.Report.DefaultLayout`.
-- **`:auto_report`** (boolean) whether a report is automatically generated to disk when a run
+- **`:report_formats`** the list of `Maestro.Report.Format` modules a report is written in after
+  every run, one file per format (e.g. `[Maestro.Report.DefaultLayout, Maestro.Report.JUnit]` for
+  the HTML report plus JUnit XML for CI). The first one is the default format, used whenever none
+  is asked for explicitly. A host can add its own formats, including its own HTML report.
+  Defaults to `[Maestro.Report.DefaultLayout]`. See [docs/report.md](docs/report.md).
+- **`:auto_report`** (boolean) whether reports are automatically generated to disk when a run
   finishes. Defaults to `true`; set to `false` if a host only ever wants reports on demand
   rather than one written for every run.
 - **`:max_scenario_depth`** (integer) the maximum nesting depth of scenario-calling-scenario chains

@@ -299,6 +299,36 @@ defmodule MaestroWeb.API.RunHandlerTest do
       conn = get(conn, ~p"/api/runs/does-not-exist/report")
       assert json_response(conn, 404)
     end
+
+    test "?format=junit serves JUnit XML even when it isn't configured", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
+      wait_until_done(run_id)
+
+      conn = get(conn, ~p"/api/runs/#{run_id}/report?format=junit")
+
+      assert conn.status == 200
+      assert get_resp_header(conn, "content-type") |> List.first() =~ "application/xml"
+      assert conn.resp_body =~ ~s(<testsuites name="Maestro #{run_id}")
+    end
+
+    test "400s for an unknown format, listing the available ones", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
+      wait_until_done(run_id)
+
+      conn = get(conn, ~p"/api/runs/#{run_id}/report?format=pdf")
+
+      assert %{"error" => %{"unknown_format" => "pdf", "available" => available}} =
+               json_response(conn, 400)
+
+      assert "html" in available
+      assert "junit" in available
+    end
   end
 
   describe "POST /api/runs/:run_id/report" do
@@ -309,6 +339,41 @@ defmodule MaestroWeb.API.RunHandlerTest do
       conn = post(conn, ~p"/api/runs/#{run_id}/report")
 
       assert %{"run_id" => ^run_id, "path" => path} = json_response(conn, 201)
+      assert File.exists?(path)
+    end
+
+    test "without format, writes every configured format and returns each path", %{
+      conn: conn,
+      workspace: workspace
+    } do
+      Application.put_env(:maestro, :report_formats, [
+        Maestro.Report.DefaultLayout,
+        Maestro.Report.JUnit
+      ])
+
+      on_exit(fn -> Application.delete_env(:maestro, :report_formats) end)
+
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
+      wait_until_done(run_id)
+
+      conn = post(conn, ~p"/api/runs/#{run_id}/report")
+
+      assert %{"path" => path, "paths" => %{"html" => path, "junit" => xml_path}} =
+               json_response(conn, 201)
+
+      assert String.ends_with?(path, ".html")
+      assert File.read!(xml_path) =~ "<testsuites"
+    end
+
+    test "with format, writes only that format", %{conn: conn, workspace: workspace} do
+      {:ok, run_id} = Maestro.run(workspace, [@valid_suite])
+      wait_until_done(run_id)
+
+      conn = post(conn, ~p"/api/runs/#{run_id}/report?format=junit")
+
+      assert %{"path" => path, "paths" => paths} = json_response(conn, 201)
+      assert Map.keys(paths) == ["junit"]
+      assert String.ends_with?(path, ".xml")
       assert File.exists?(path)
     end
 

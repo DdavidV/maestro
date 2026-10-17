@@ -68,6 +68,23 @@ defmodule MaestroWeb.ReportControllerTest do
            ]
   end
 
+  test "?format=junit downloads the JUnit XML report", %{conn: conn, workspace: workspace} do
+    resource_fixture!(workspace, :suite, "checkout/smoke", suite("checkout-smoke"))
+
+    {:ok, run_id} = Runner.run(workspace, ["checkout/smoke"])
+    wait_until_done(run_id)
+
+    conn = get(conn, ~p"/workspace/#{workspace.id}/reports/#{run_id}/download?format=junit")
+
+    assert conn.status == 200
+    assert conn.resp_body =~ ~s(<testsuite name="checkout-smoke")
+    assert get_resp_header(conn, "content-type") |> List.first() =~ "application/xml"
+
+    assert get_resp_header(conn, "content-disposition") == [
+             ~s(attachment; filename="maestro_report_#{run_id}.xml")
+           ]
+  end
+
   defp strip_generated_at(html), do: Regex.replace(~r/Generated .*?<\/p>/, html, "Generated</p>")
 
   test "the downloaded report is standalone (has its own <style>, no external asset refs)", %{

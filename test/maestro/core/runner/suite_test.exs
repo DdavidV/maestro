@@ -53,8 +53,31 @@ defmodule Maestro.Core.Runner.SuiteTest do
   end
 
   test "an empty testcases list is trivially :ok" do
-    assert Suite.run("test-run", %{id: "empty", testcases: []}) ==
-             %{id: "empty", status: :ok, testcases: []}
+    assert %{id: "empty", status: :ok, testcases: [], duration: duration} =
+             Suite.run("test-run", %{id: "empty", testcases: []})
+
+    assert is_integer(duration) and duration >= 0
+  end
+
+  test "suite and testcase durations cover their children's durations" do
+    suite = %{
+      id: "suite1",
+      testcases: [
+        %{id: "tc1", steps: [step(%{"a" => 1}, %{"a" => 1}), step(%{"b" => 2}, %{"b" => 2})]},
+        %{id: "tc2", steps: [step(%{"c" => 3}, %{"c" => 3})]}
+      ]
+    }
+
+    result = Suite.run("test-run", suite)
+
+    for testcase <- result.testcases do
+      step_total = testcase.steps |> Enum.map(& &1.duration) |> Enum.sum()
+      assert is_integer(testcase.duration)
+      assert testcase.duration >= step_total
+    end
+
+    testcase_total = result.testcases |> Enum.map(& &1.duration) |> Enum.sum()
+    assert result.duration >= testcase_total
   end
 
   test "broadcasts a :testcase_result message after each testcase finishes" do

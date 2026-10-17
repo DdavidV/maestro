@@ -1,6 +1,9 @@
 defmodule MaestroWeb.ReportController do
   @moduledoc """
-  Downloads a run's report as a standalone HTML file.
+  Downloads a run's report as a standalone file: the default format
+  (`Maestro.Report.Format.default/0`, the HTML report unless configured
+  otherwise), or any `Maestro.Report.Format.available/0` format named by
+  `?format=` (e.g. `junit`).
 
   Calls `Maestro.render_report/1` directly, so the download always
   reflects the run's current state including a still-running run
@@ -10,22 +13,32 @@ defmodule MaestroWeb.ReportController do
   use MaestroWeb, :controller
 
   alias Maestro.Core.Runner
+  alias Maestro.Report.Format
 
-  def download(conn, %{"workspace_id" => workspace_id, "run_id" => run_id}) do
+  def download(conn, %{"workspace_id" => workspace_id, "run_id" => run_id} = params) do
     with {:ok, ^workspace_id} <- Runner.workspace_id(run_id),
-         {:ok, html} <- Maestro.render_report(run_id) do
+         {:ok, format} <- requested_format(params),
+         {:ok, body} <- Maestro.render_report(run_id, format) do
       conn
-      |> put_resp_content_type("text/html")
+      |> put_resp_content_type(Format.content_type(format))
       |> put_resp_header(
         "content-disposition",
-        ~s(attachment; filename="maestro_report_#{run_id}.html")
+        ~s(attachment; filename="maestro_report_#{run_id}.#{Format.extension(format)}")
       )
-      |> send_resp(200, html)
+      |> send_resp(200, body)
     else
+      {:error, :unknown_format} ->
+        conn
+        |> put_flash(:error, "Unknown report format #{inspect(params["format"])}.")
+        |> redirect(to: ~p"/workspace/#{workspace_id}/reports/#{run_id}")
+
       _not_found_or_wrong_workspace ->
         conn
         |> put_flash(:error, "Run #{run_id} not found.")
         |> redirect(to: ~p"/workspace/#{workspace_id}")
     end
   end
+
+  defp requested_format(%{"format" => name}) when is_binary(name), do: Format.find(name)
+  defp requested_format(_params), do: {:ok, Format.default()}
 end

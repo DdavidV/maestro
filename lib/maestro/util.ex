@@ -51,4 +51,36 @@ defmodule Maestro.Util do
     to default to Maestro's own priv_dir instead.
     """
   end
+
+  @doc """
+  Formats a `duration` (integer microseconds, as carried by step/testcase/
+  suite results) for display: `"850 µs"`, `"12.4 ms"`, `"3.21 s"`,
+  `"2m 05s"`. `nil` (not finished yet) renders as `"—"`.
+
+  ## Examples
+
+      iex> Maestro.Util.format_duration(850)
+      "850 µs"
+      iex> Maestro.Util.format_duration(12_400)
+      "12.4 ms"
+      iex> Maestro.Util.format_duration(3_210_000)
+      "3.21 s"
+      iex> Maestro.Util.format_duration(125_000_000)
+      "2m 05s"
+      iex> Maestro.Util.format_duration(nil)
+      "—"
+  """
+  @spec format_duration(non_neg_integer | nil) :: String.t()
+  def format_duration(nil), do: "—"
+  def format_duration(us) when us < 1_000, do: "#{us} µs"
+  def format_duration(us) when us < 1_000_000, do: "#{decimals(us / 1_000, 1)} ms"
+  def format_duration(us) when us < 60_000_000, do: "#{decimals(us / 1_000_000, 2)} s"
+
+  def format_duration(us) do
+    total_seconds = div(us, 1_000_000)
+    seconds = total_seconds |> rem(60) |> Integer.to_string() |> String.pad_leading(2, "0")
+    "#{div(total_seconds, 60)}m #{seconds}s"
+  end
+
+  defp decimals(float, places), do: :erlang.float_to_binary(float, decimals: places)
 end

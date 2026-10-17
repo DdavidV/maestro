@@ -22,8 +22,11 @@
     </:eyebrow>
     <:subtitle>Every suite, testcase, step and assertion in this run.</:subtitle>
     <:actions>
-      <.button href={"/workspace/#{@workspace.id}/reports/#{@run_id}/download"}>
-        <.icon name="hero-arrow-down-tray-mini" class="size-4" /> Download HTML report
+      <.button
+        :for={{query, label} <- @download_formats}
+        href={"/workspace/#{@workspace.id}/reports/#{@run_id}/download#{query}"}
+      >
+        <.icon name="hero-arrow-down-tray-mini" class="size-4" /> {label}
       </.button>
     </:actions>
   </.header>

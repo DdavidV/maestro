@@ -8,7 +8,7 @@ defmodule Maestro.ReportTest do
 
   defmodule DummyLayout do
     @moduledoc false
-    @behaviour Maestro.Report.Layout
+    @behaviour Maestro.Report.Format
 
     @impl true
     def render(_model), do: "dummy layout output"
@@ -176,6 +176,71 @@ defmodule Maestro.ReportTest do
       Application.put_env(:maestro, :report_dir, Path.join(blocking_file, "reports"))
 
       assert {:error, {:write_failed, _reason}} = Report.generate(run_id)
+    end
+  end
+
+  describe "generate_all/2" do
+    test "writes one file per format, named by each format's extension", %{workspace: workspace} do
+      assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
+      wait_until_done(run_id)
+
+      formats = [Maestro.Report.DefaultLayout, Maestro.Report.JUnit]
+      assert {:ok, paths} = Report.generate_all(run_id, formats)
+
+      assert {:ok, html_path} = Report.report_path(run_id)
+      assert {:ok, xml_path} = Report.report_path(run_id, Maestro.Report.JUnit)
+
+      assert paths == %{
+               Maestro.Report.DefaultLayout => html_path,
+               Maestro.Report.JUnit => xml_path
+             }
+
+      assert String.ends_with?(xml_path, "maestro_report_#{run_id}.xml")
+      assert File.read!(html_path) =~ "<!DOCTYPE html>"
+      assert File.read!(xml_path) =~ ~s(<testsuites name="Maestro #{run_id}")
+    end
+
+    test "defaults to the configured :report_formats", %{workspace: workspace} do
+      Application.put_env(:maestro, :report_formats, [Maestro.Report.JUnit])
+      on_exit(fn -> Application.delete_env(:maestro, :report_formats) end)
+
+      assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
+      wait_until_done(run_id)
+
+      assert {:ok, paths} = Report.generate_all(run_id)
+      assert Map.keys(paths) == [Maestro.Report.JUnit]
+    end
+
+    test "a crashing format doesn't stop the other formats from being written", %{
+      workspace: workspace
+    } do
+      assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
+      wait_until_done(run_id)
+
+      formats = [Maestro.TestCrashingReportLayout, Maestro.Report.JUnit]
+
+      assert {:error, [{Maestro.TestCrashingReportLayout, {:raised, "report layout boom"}}]} =
+               Report.generate_all(run_id, formats)
+
+      assert {:ok, xml_path} = Report.report_path(run_id, Maestro.Report.JUnit)
+      assert File.exists?(xml_path)
+    end
+
+    test "a second format with an already-used extension is refused, not overwritten", %{
+      workspace: workspace
+    } do
+      assert {:ok, run_id} = Runner.run(workspace, [inline_suite("checkout")])
+      wait_until_done(run_id)
+
+      assert {:error, [{DummyLayout, {:duplicate_extension, "html"}}]} =
+               Report.generate_all(run_id, [Maestro.Report.DefaultLayout, DummyLayout])
+
+      assert {:ok, html_path} = Report.report_path(run_id)
+      assert File.read!(html_path) =~ "<!DOCTYPE html>"
+    end
+
+    test "returns {:error, :not_found} for an unknown run_id" do
+      assert Report.generate_all("does_not_exist") == {:error, :not_found}
     end
   end
 

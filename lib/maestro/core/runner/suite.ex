@@ -12,6 +12,9 @@ defmodule Maestro.Core.Runner.Suite do
   a LiveView watching `run_id` can show per-testcase progress live rather
   than only learning about this suite's outcome once the whole suite (all
   of its testcases) finishes.
+
+  `duration` is the wall-clock microseconds (monotonic clock) from the
+  first testcase starting to the last one finishing.
   """
 
   alias Maestro.Core.Runner.Broadcaster
@@ -19,14 +22,16 @@ defmodule Maestro.Core.Runner.Suite do
 
   @spec run(Maestro.run_id(), Maestro.suite()) :: Maestro.suite_run_result()
   def run(run_id, suite) do
-    testcases =
-      Enum.map(suite.testcases, fn testcase ->
-        testcase_run_result = Testcase.run(testcase)
-        Broadcaster.broadcast(run_id, {:testcase_result, suite.id, testcase_run_result})
-        testcase_run_result
+    {duration, testcases} =
+      :timer.tc(fn ->
+        Enum.map(suite.testcases, fn testcase ->
+          testcase_run_result = Testcase.run(testcase)
+          Broadcaster.broadcast(run_id, {:testcase_result, suite.id, testcase_run_result})
+          testcase_run_result
+        end)
       end)
 
     status = if Enum.all?(testcases, &(&1.status == :ok)), do: :ok, else: :error
-    %{id: suite.id, status: status, testcases: testcases}
+    %{id: suite.id, status: status, testcases: testcases, duration: duration}
   end
 end

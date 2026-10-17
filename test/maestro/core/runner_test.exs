@@ -482,7 +482,7 @@ defmodule Maestro.Core.RunnerTest do
         )
 
       previous = Application.get_env(:maestro, :report_dir)
-      previous_layout = Application.get_env(:maestro, :report_layout)
+      previous_formats = Application.get_env(:maestro, :report_formats)
       previous_auto = Application.get_env(:maestro, :auto_report)
       Application.put_env(:maestro, :report_dir, report_dir)
 
@@ -495,10 +495,10 @@ defmodule Maestro.Core.RunnerTest do
           Application.delete_env(:maestro, :report_dir)
         end
 
-        if previous_layout do
-          Application.put_env(:maestro, :report_layout, previous_layout)
+        if previous_formats do
+          Application.put_env(:maestro, :report_formats, previous_formats)
         else
-          Application.delete_env(:maestro, :report_layout)
+          Application.delete_env(:maestro, :report_formats)
         end
 
         if previous_auto do
@@ -509,6 +509,22 @@ defmodule Maestro.Core.RunnerTest do
       end)
 
       %{report_dir: report_dir}
+    end
+
+    # Reports are written right after the run's terminal status, so a
+    # second format's file can land a moment after status/1 says :ok.
+    defp eventually_exists?(path, tries \\ 50) do
+      cond do
+        File.exists?(path) ->
+          true
+
+        tries == 0 ->
+          false
+
+        true ->
+          Process.sleep(10)
+          eventually_exists?(path, tries - 1)
+      end
     end
 
     defp report_path!(run_id) do
@@ -542,10 +558,24 @@ defmodule Maestro.Core.RunnerTest do
       refute File.exists?(report_path!(run_id))
     end
 
-    test "a crashing custom report_layout does not crash the run or corrupt run status", %{
+    test "every configured report format is written automatically", %{workspace: workspace} do
+      Application.put_env(:maestro, :report_formats, [
+        Maestro.Report.DefaultLayout,
+        Maestro.Report.JUnit
+      ])
+
+      {:ok, run_id} = Runner.run(workspace, [inline_suite("s1")])
+      wait_until_done(run_id)
+
+      {:ok, xml_path} = Maestro.Report.report_path(run_id, Maestro.Report.JUnit)
+      assert eventually_exists?(report_path!(run_id))
+      assert eventually_exists?(xml_path)
+    end
+
+    test "a crashing custom report format does not crash the run or corrupt run status", %{
       workspace: workspace
     } do
-      Application.put_env(:maestro, :report_layout, Maestro.TestCrashingReportLayout)
+      Application.put_env(:maestro, :report_formats, [Maestro.TestCrashingReportLayout])
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->

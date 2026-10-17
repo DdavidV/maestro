@@ -165,24 +165,28 @@ defmodule Maestro do
 
   @typedoc """
   One suite's outcome within a run. `testcases` is `[]` until that suite
-  starts executing.
+  starts executing. `duration` is the wall-clock microseconds the suite
+  took to run, `nil` until it has finished.
   """
   @type suite_run_result :: %{
           id: String.t(),
           status: :pending | :running | :ok | :error,
-          testcases: [testcase_run_result]
+          testcases: [testcase_run_result],
+          duration: non_neg_integer | nil
         }
 
   @typedoc """
   One testcase's outcome within a suite run. `steps` is exactly
   `Maestro.Core.Runner.Step.run_steps/2`'s own `[step_result]` return value,
   reused verbatim (already nests `Maestro.Assert.AssertionResult.t()`
-  inside each step) no re-wrapping.
+  inside each step) no re-wrapping. `duration` is the wall-clock
+  microseconds the whole testcase took (each step also carries its own).
   """
   @type testcase_run_result :: %{
           id: String.t(),
           status: :ok | :error,
-          steps: [Maestro.Core.Runner.Step.step_result()]
+          steps: [Maestro.Core.Runner.Step.step_result()],
+          duration: non_neg_integer
         }
 
   @typedoc """
@@ -279,22 +283,34 @@ defmodule Maestro do
     do: Maestro.Core.Runner.result(run_id, suite_id, testcase_id)
 
   @doc """
-  Renders `run_id`'s current result as a self-contained HTML report
-  string, without writing it anywhere. See `Maestro.Report.render/2`.
+  Renders `run_id`'s current result as a report string, without writing
+  it anywhere: the default format (`Maestro.Report.Format.default/0`) unless
+  another `Maestro.Report.Format` is passed (e.g. `Maestro.Report.JUnit`).
+  See `Maestro.Report.render/2`.
   """
   @spec render_report(run_id, module) :: {:ok, String.t()} | {:error, :not_found}
-  def render_report(run_id, layout \\ Maestro.Report.Layout.configured()),
-    do: Maestro.Report.render(run_id, layout)
+  def render_report(run_id, format \\ Maestro.Report.Format.default()),
+    do: Maestro.Report.render(run_id, format)
 
   @doc """
-  Renders and writes `run_id`'s report to disk, under
+  Renders and writes `run_id`'s report in one format (default:
+  `Maestro.Report.Format.default/0`) to disk, under
   `Maestro.Report.report_dir/0`'s per-workspace subdirectory (see
-  `Maestro.Report.report_path/1`). Called automatically after every
-  `run/1`/`run_test_plan/1` completes, unless disabled via
-  `config :maestro, :auto_report, false`. See `Maestro.Report.generate/2`.
+  `Maestro.Report.report_path/2`). The automatic post-run generation writes
+  every configured format instead, see `generate_reports/1`.
+  See `Maestro.Report.generate/2`.
   """
   @spec generate_report(run_id, module) ::
           :ok | {:error, :not_found | {:write_failed, term}}
-  def generate_report(run_id, layout \\ Maestro.Report.Layout.configured()),
-    do: Maestro.Report.generate(run_id, layout)
+  def generate_report(run_id, format \\ Maestro.Report.Format.default()),
+    do: Maestro.Report.generate(run_id, format)
+
+  @doc """
+  Writes `run_id`'s report in every configured `Maestro.Report.Format`
+  (`config :maestro, :report_formats`), one file per format. This is what
+  runs automatically after every run. See `Maestro.Report.generate_all/2`.
+  """
+  @spec generate_reports(run_id) ::
+          {:ok, %{module => String.t()}} | {:error, :not_found | [{module, term}]}
+  def generate_reports(run_id), do: Maestro.Report.generate_all(run_id)
 end

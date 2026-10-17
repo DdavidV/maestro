@@ -16,8 +16,8 @@ defmodule Maestro.Core.Runner.StoreTest do
                   run_id: run_id,
                   status: :running,
                   suites: [
-                    %{id: "a", status: :pending, testcases: []},
-                    %{id: "b", status: :pending, testcases: []}
+                    %{id: "a", status: :pending, testcases: [], duration: nil},
+                    %{id: "b", status: :pending, testcases: [], duration: nil}
                   ]
                 }}
     end
@@ -49,7 +49,13 @@ defmodule Maestro.Core.Runner.StoreTest do
 
       {:ok, row} = Store.get(run_id)
       assert Enum.at(row.suites, 0) == result
-      assert Enum.at(row.suites, 1) == %{id: "b", status: :pending, testcases: []}
+
+      assert Enum.at(row.suites, 1) == %{
+               id: "b",
+               status: :pending,
+               testcases: [],
+               duration: nil
+             }
     end
   end
 

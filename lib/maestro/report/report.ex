@@ -1,13 +1,14 @@
 defmodule Maestro.Report do
   @moduledoc """
-  Renders and writes HTML reports for a run, identified by `run_id`.
+  Renders and writes reports for a run, identified by `run_id`, in any
+  `Maestro.Report.Format` (HTML by default, JUnit XML, or a host's own).
 
   Fetches the run's current `t:Maestro.run_result/0` via
   `Maestro.Core.Runner.result/1`, builds a `Maestro.Report.Model.t()` from
-  it, and hands that to the configured `Maestro.Report.Layout`
-  (`Maestro.Report.Layout.configured/0`, default
-  `Maestro.Report.DefaultLayout`, overridable via
-  `config :maestro, :report_layout`).
+  it, and hands that to a `Maestro.Report.Format` by default
+  `Maestro.Report.Format.default/0`, the first format in
+  `config :maestro, :report_formats` (`Maestro.Report.DefaultLayout`, the
+  HTML report, unless configured otherwise).
 
   `render/2` returns the HTML as a string with no filesystem interaction,
   for a caller that wants the markup itself (embedding, streaming, a
@@ -20,13 +21,18 @@ defmodule Maestro.Report do
   auto-generation, or for a still-`:running` run to inspect partial
   results).
 
-  Both accept a `layout` override (second argument) so a one-off manual
-  call doesn't require flipping the global `report_layout` config just to
-  try a different layout module.
+  Both accept a `format` override (second argument), e.g.
+  `Maestro.Report.JUnit`, so a one-off manual call doesn't require changing
+  the global `:report_formats` config.
+
+  `generate_all/2` writes every configured format
+  (`Maestro.Report.Format.configured/0`) in one go, each to its own file
+  named by the format's extension, and is what `Maestro.Core.Runner`
+  calls automatically after every run.
   """
 
   alias Maestro.Core.Runner
-  alias Maestro.Report.Layout
+  alias Maestro.Report.Format
   alias Maestro.Report.Model
 
   @doc """
@@ -47,22 +53,24 @@ defmodule Maestro.Report do
   end
 
   @doc """
-  The file a `generate/2` call for `run_id` writes (or overwrites):
-  `report_dir()/<workspace_id>/maestro_report_<run_id>.html`. `{:error, :not_found}`
-  if `run_id` doesn't resolve to a known run (same convention as
-  `render/2`/`Runner.result/1`) there's no workspace to bucket under
-  otherwise.
+  The file a `generate/2` call for `run_id` in `format` writes (or
+  overwrites): `report_dir()/<workspace_id>/maestro_report_<run_id>.<ext>`,
+  `<ext>` being the format's `extension/0` (`html` for the default
+  layout). `{:error, :not_found}` if `run_id` doesn't resolve to a known
+  run (same convention as `render/2`/`Runner.result/1`) there's no
+  workspace to bucket under otherwise.
   """
-  @spec report_path(Maestro.run_id()) :: {:ok, String.t()} | {:error, :not_found}
-  def report_path(run_id) do
+  @spec report_path(Maestro.run_id(), module) :: {:ok, String.t()} | {:error, :not_found}
+  def report_path(run_id, format \\ Format.default()) do
     with {:ok, workspace_id} <- Runner.workspace_id(run_id) do
-      {:ok, Path.join([report_dir(), workspace_id, "maestro_report_#{run_id}.html"])}
+      file = "maestro_report_#{run_id}.#{Format.extension(format)}"
+      {:ok, Path.join([report_dir(), workspace_id, file])}
     end
   end
 
   @doc """
   Renders `run_id`'s current result as a self-contained HTML string, via
-  `layout` (default: `Maestro.Report.Layout.configured/0`).
+  `format` (default: `Maestro.Report.Format.default/0`).
 
   Returns `{:error, :not_found}` if `run_id` doesn't resolve (unknown, or
   never existed) same `:not_found` convention `Maestro.result/1` uses. A
@@ -73,9 +81,9 @@ defmodule Maestro.Report do
   swallows it so a bad layout can't crash a run.
   """
   @spec render(Maestro.run_id(), module) :: {:ok, String.t()} | {:error, :not_found}
-  def render(run_id, layout \\ Layout.configured()) do
+  def render(run_id, format \\ Format.default()) do
     with {:ok, run_result} <- Runner.result(run_id) do
-      {:ok, layout.render(Model.build(run_result))}
+      {:ok, format.render(Model.build(run_result))}
     end
   end
 
@@ -99,15 +107,69 @@ defmodule Maestro.Report do
   """
   @spec generate(Maestro.run_id(), module) ::
           :ok | {:error, :not_found | {:write_failed, term}}
-  def generate(run_id, layout \\ Layout.configured()) do
-    with {:ok, html} <- render(run_id, layout),
-         {:ok, path} <- report_path(run_id),
+  def generate(run_id, format \\ Format.default()) do
+    with {:ok, body} <- render(run_id, format),
+         {:ok, path} <- report_path(run_id, format),
          :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(path, html) do
+         :ok <- File.write(path, body) do
       :ok
     else
       {:error, :not_found} -> {:error, :not_found}
       {:error, reason} -> {:error, {:write_failed, reason}}
     end
+  end
+
+  @doc """
+  Writes `run_id`'s report in every format in `formats` (default:
+  `Maestro.Report.Format.configured/0`), each via `generate/2`.
+
+  Formats are isolated from each other: one format failing to write, or
+  raising inside its own `render/1` (a broken custom format), never stops
+  the remaining formats from being written. Returns `{:ok, paths}` (a
+  `%{format => path}` map) if every format was written, or
+  `{:error, failures}` listing each format that wasn't, as
+  `{format, reason}` `reason` being `generate/2`'s own error,
+  `{:raised, message}`, or `{:duplicate_extension, ext}` for a format
+  whose extension an earlier format in the list already claimed (it would
+  overwrite that file). The formats that did succeed are still on disk.
+  `{:error, :not_found}` for an unknown `run_id`, before anything is
+  written.
+  """
+  @spec generate_all(Maestro.run_id(), [module]) ::
+          {:ok, %{module => String.t()}}
+          | {:error, :not_found | [{module, term}]}
+  def generate_all(run_id, formats \\ Format.configured()) do
+    with {:ok, _workspace_id} <- Runner.workspace_id(run_id) do
+      {written, failures, _extensions} =
+        Enum.reduce(formats, {%{}, [], MapSet.new()}, fn format, {written, failures, seen} ->
+          extension = Format.extension(format)
+
+          if MapSet.member?(seen, extension) do
+            {written, [{format, {:duplicate_extension, extension}} | failures], seen}
+          else
+            case safe_generate(run_id, format) do
+              :ok ->
+                {:ok, path} = report_path(run_id, format)
+                {Map.put(written, format, path), failures, MapSet.put(seen, extension)}
+
+              {:error, reason} ->
+                {written, [{format, reason} | failures], MapSet.put(seen, extension)}
+            end
+          end
+        end)
+
+      case failures do
+        [] -> {:ok, written}
+        failures -> {:error, Enum.reverse(failures)}
+      end
+    else
+      {:error, :not_found} -> {:error, :not_found}
+    end
+  end
+
+  defp safe_generate(run_id, format) do
+    generate(run_id, format)
+  rescue
+    exception -> {:error, {:raised, Exception.message(exception)}}
   end
 end

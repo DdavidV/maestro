@@ -56,10 +56,11 @@ defmodule Maestro.Core.Runner do
 
   Once a run reaches a terminal status (`Store.finalize/1` on ordinary
   completion, `Store.mark_crashed/1` if `execute_run/2` itself raised),
-  `Maestro.Report.generate/1` is called for that `run_id` unless
+  `Maestro.Report.generate_all/1` is called for that `run_id` (writing every
+  configured `Maestro.Report.Format`) unless
   `config :maestro, :auto_report, false` is set. This happens strictly
   *after* the terminal write, so `status/1`/`result/1` are never delayed
-  by it, and any failure (a bad custom `report_layout`, a disk error) is
+  by it, and any failure (a bad custom report format, a disk error) is
   caught and logged, never allowed to crash this run's `Task` or affect
   its already-finalized status.
   """
@@ -244,9 +245,12 @@ defmodule Maestro.Core.Runner do
 
   defp generate_report(run_id) do
     if Application.get_env(:maestro, :auto_report, true) do
-      case Report.generate(run_id) do
-        :ok ->
+      case Report.generate_all(run_id) do
+        {:ok, _paths} ->
           :ok
+
+        {:error, failures} when is_list(failures) ->
+          Enum.each(failures, &log_report_failure(run_id, &1))
 
         {:error, reason} ->
           Logger.warning("Maestro report generation failed for #{run_id}: #{inspect(reason)}")
@@ -257,6 +261,18 @@ defmodule Maestro.Core.Runner do
       Logger.warning(
         "Maestro report generation crashed for #{run_id}: #{Exception.message(exception)}"
       )
+  end
+
+  defp log_report_failure(run_id, {format, {:raised, message}}) do
+    Logger.warning(
+      "Maestro report generation crashed for #{run_id} (#{inspect(format)}): #{message}"
+    )
+  end
+
+  defp log_report_failure(run_id, {format, reason}) do
+    Logger.warning(
+      "Maestro report generation failed for #{run_id} (#{inspect(format)}): #{inspect(reason)}"
+    )
   end
 
   defp execute_suite(run_id, index, suite) do

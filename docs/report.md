@@ -1,36 +1,57 @@
-# Reports: HTML output for a run
+# Reports: HTML, JUnit XML, and custom formats
 
-After (or during) a [run](maestro.md), Maestro can render a self-contained
-HTML report one file, inline CSS, no server or external assets, meant
-to be opened directly via `file://` or attached to a CI job. This covers
-generating a report, where it's written, what it contains, and how to
-plug in your own layout instead of the built-in one.
+After (or during) a [run](maestro.md), Maestro can render its result as a
+report in one or more **formats**:
+
+- **HTML** (`Maestro.Report.DefaultLayout`, the default) a self-contained
+  file, inline CSS, no server or external assets, meant to be opened
+  directly via `file://` or attached to a CI job.
+- **JUnit XML** (`Maestro.Report.JUnit`) the test-result format CI
+  systems read to show per-test results, history and timings.
+- **Your own** any module implementing `Maestro.Report.Format`.
+
+This covers generating reports, choosing formats, where they're written,
+what they contain, and how to write your own format.
 
 Every example below has been checked against the actual `Maestro.Report`
 code.
 
 ## Generating a report
 
-A report is generated **automatically** after every
+A report is generated **automatically** in every configured format (see
+[Report formats](#report-formats)) after every
 `Maestro.run/1`/`Maestro.run_test_plan/1` completes you don't need to
 call anything yourself for the common case. See
 [Disabling automatic generation](#disabling-automatic-generation) to turn
 this off.
 
-To generate (or regenerate) one manually:
+To generate (or regenerate) every configured format manually:
+
+```elixir
+{:ok, paths} = Maestro.generate_reports(run_id)
+#=> {:ok, %{Maestro.Report.DefaultLayout => ".../maestro_report_<run_id>.html", ...}}
+```
+
+Or just one format (the default format if none is given):
 
 ```elixir
 :ok = Maestro.generate_report(run_id)
+:ok = Maestro.generate_report(run_id, Maestro.Report.JUnit)
 ```
 
-Writes (or overwrites) the report to a fixed path derived from `run_id`
-see [Where a report is written](#where-a-report-is-written) below.
+Each writes (or overwrites) a fixed path derived from `run_id` and the
+format's file extension see
+[Where a report is written](#where-a-report-is-written) below.
+`generate_reports/1` writes each format independently: a format that
+fails to write (or raises) is reported in
+`{:error, [{format, reason}]}` without stopping the others.
 
 To get the HTML itself as a string, with no filesystem write at all
 (embedding it elsewhere, streaming it, choosing your own write target):
 
 ```elixir
 {:ok, html} = Maestro.render_report(run_id)
+{:ok, xml} = Maestro.render_report(run_id, Maestro.Report.JUnit)
 ```
 
 Both accept `run_id` for a run that's still `:running`, not just a
@@ -60,7 +81,10 @@ Maestro.generate_report(run_id)
 
 ```elixir
 Maestro.Report.report_path(run_id)
-#=> "<report_dir>/maestro_report_<run_id>.html"
+#=> "<report_dir>/<workspace_id>/maestro_report_<run_id>.html"
+
+Maestro.Report.report_path(run_id, Maestro.Report.JUnit)
+#=> "<report_dir>/<workspace_id>/maestro_report_<run_id>.xml"
 ```
 
 `report_dir` is configurable:
@@ -82,7 +106,65 @@ config :maestro, :auto_report, false
 ```
 
 With this set, a report is only ever produced when you call
-`Maestro.render_report/1` or `Maestro.generate_report/1` yourself.
+`Maestro.render_report/1`, `Maestro.generate_report/1` or
+`Maestro.generate_reports/1` yourself.
+
+## Report formats
+
+```elixir
+config :maestro, :report_formats, [
+  Maestro.Report.DefaultLayout,
+  Maestro.Report.JUnit
+]
+```
+
+Every format in this list is written after each run, one file per format
+(named by the format's extension, which must therefore be unique in the
+list). Unset, it defaults to `[Maestro.Report.DefaultLayout]` just the
+HTML report.
+
+The **first** format in the list is the *default* format, used whenever a
+format isn't asked for explicitly: `Maestro.render_report/1`,
+`Maestro.generate_report/1`, `GET /api/runs/{run_id}/report` without
+`?format=`, and the GUI's main download button.
+
+Every configured format, plus the built-in `html` and `junit` ones, can
+also be fetched on demand by name, whether or not it's written
+automatically:
+
+- REST: `GET /api/runs/{run_id}/report?format=junit` (rendered, not
+  written), `POST /api/runs/{run_id}/report?format=junit` (written to disk;
+  without `format`, writes every configured format and returns each path).
+- GUI: one download button per format on a run's report page.
+
+An unknown `format` name gets a `400` listing the available names.
+
+## JUnit XML
+
+`Maestro.Report.JUnit` (name `junit`, extension `.xml`) maps a run onto
+JUnit's structure:
+
+| Maestro | JUnit |
+|---|---|
+| run | `<testsuites name="Maestro <run_id>">`, with totals |
+| suite | `<testsuite name="<suite id>">` |
+| testcase | `<testcase name="<testcase id>" classname="<suite id>">` |
+| failed assertion | `<failure type="<reason>" message="...">` with every failing step's details |
+| dispatch error (interpolation, unknown client, client crash, ...) | `<error type="<reason>" message="...">` |
+| a testcase's steps | `<system-out>`: each step's status, client, duration and assertions |
+| suite still pending/running (partial report, crashed run) | a `<testcase name="(not finished)">` marked `<skipped>` |
+| `duration` | `time`, in seconds |
+
+A failing testcase gets exactly one `<error>` (if any of its steps
+couldn't be dispatched at all) or `<failure>` (its steps ran, but an
+assertion didn't hold), the same "couldn't run" vs. "ran but wrong"
+distinction JUnit itself draws.
+
+A typical CI job triggers a run over REST, polls its status until it
+finishes, downloads `GET /api/runs/{run_id}/report?format=junit` into the
+job's workspace, and publishes that file as the job's test report (GitLab
+`artifacts:reports:junit`, Jenkins' JUnit plugin, a GitHub Actions test
+reporter, ...).
 
 ## What's in a report
 
@@ -94,12 +176,12 @@ just the parts with something to assert.
 
 For each level:
 
-- **Run** `run_id`, overall status, when it was generated, and a
-  summary count of passed/failed suites.
-- **Suite** id and status (`:pending`/`:running`/`:ok`/`:error`), each
-  linked from a table of contents at the top of the report.
-- **Testcase** id and status.
-- **Step** name, status, which client sent it, the rendered
+- **Run** `run_id`, overall status, when it was generated, total
+  duration, and a summary count of passed/failed suites.
+- **Suite** id, status (`:pending`/`:running`/`:ok`/`:error`) and
+  duration, each linked from a table of contents at the top of the report.
+- **Testcase** id, status and duration.
+- **Step** name, status, duration, which client sent it, the rendered
   payload/options actually sent, and either:
   - its **assertions** (each with its matcher name, `expected`/`actual`,
     and if it failed every individual mismatch found, not just the
@@ -110,25 +192,30 @@ For each level:
     `init/2`/`send/2` failure or crash) shown distinctly from an
     assertion failure, since no comparison ever happened to report.
 
-## Writing your own layout
+## Writing your own format
 
-`Maestro.Report.DefaultLayout` is a `Maestro.Report.Layout` a behaviour
-with a single callback:
+A format is a module implementing `Maestro.Report.Format`. Only `render/1`
+is required; the optional callbacks default to an HTML report's values:
 
 ```elixir
 @callback render(Maestro.Report.Model.t()) :: String.t()
+@callback name() :: String.t()          # optional, defaults to extension()
+@callback extension() :: String.t()     # optional, defaults to "html"
+@callback content_type() :: String.t()  # optional, defaults to "text/html"
 ```
 
-A host application can implement its own and point Maestro at it instead
-of the built-in one:
+A custom HTML report only needs `render/1`. Put it first in
+`:report_formats` to make it the default instead of the built-in one (it
+also takes over the `html` name, since a configured format shadows a
+built-in one with the same name):
 
 ```elixir
-config :maestro, :report_layout, MyApp.Maestro.ReportLayout
+config :maestro, :report_formats, [MyApp.Maestro.ReportLayout, Maestro.Report.JUnit]
 ```
 
 ```elixir
 defmodule MyApp.Maestro.ReportLayout do
-  @behaviour Maestro.Report.Layout
+  @behaviour Maestro.Report.Format
 
   @impl true
   def render(model) do
@@ -150,8 +237,31 @@ presentation-ready data tree (not the raw `Maestro.run_result/0`), so you
 never need to branch on matcher- or client-internal structs yourself; see
 [The model shape](#the-model-shape) below for its exact fields.
 
+A non-HTML format sets the optional callbacks, e.g. a CSV summary:
+
+```elixir
+defmodule MyApp.Maestro.CsvReport do
+  @behaviour Maestro.Report.Format
+
+  @impl true
+  def render(model) do
+    rows = for suite <- model.suites, do: "#{suite.id},#{suite.status},#{suite.duration}"
+    Enum.join(["suite,status,duration_us" | rows], "\n")
+  end
+
+  @impl true
+  def name, do: "csv"
+
+  @impl true
+  def extension, do: "csv"
+
+  @impl true
+  def content_type, do: "text/csv"
+end
+```
+
 `Maestro.render_report/2`/`Maestro.generate_report/2` both also accept a
-`layout` module directly, as a second argument, for a one-off call
+format module directly, as a second argument, for a one-off call
 without touching the global config:
 
 ```elixir
@@ -165,22 +275,25 @@ without touching the global config:
   run_id: run_id,
   status: :ok,
   generated_at: ~U[2026-01-01 00:00:00Z],
-  summary: %{total: 2, ok: 1, error: 1},
+  summary: %{total: 2, ok: 1, error: 1, duration: 1_840_000},
   suites: [
     %{
       id: "checkout-flow",
       anchor: "suite-checkout-flow",
       status: :error,
+      duration: 1_200_000,
       testcases: [
         %{
           id: "add-to-cart-and-pay",
           anchor: "testcase-checkout-flow-add-to-cart-and-pay",
           status: :error,
+          duration: 1_150_000,
           steps: [
             %{
               name: "POST /cart",
               status: :error,
               client: "http",
+              duration: 412_000,
               rendered: %{"payload" => %{"sku" => "ABC123"}, "options" => %{"method" => "POST", "url" => "..."}},
               dispatch_error: nil,
               assertions: [
@@ -203,6 +316,9 @@ without touching the global config:
 }
 ```
 
+- **`duration`** wall-clock time in **microseconds** (integer), measured
+  with a monotonic clock. `nil` on a suite that hasn't finished yet;
+  `summary.duration` totals every finished suite.
 - **`anchor`** a pre-computed, HTML-id-safe slug (used for the built-in
   layout's table-of-contents links) a custom layout can use it the same
   way, or ignore it entirely.
@@ -213,22 +329,24 @@ without touching the global config:
 - A step that dispatched successfully but has no `assert` entries at all
   still appears, with `assertions: []` not omitted.
 
-## Previewing layout changes during development
+## Previewing format changes during development
 
-For iterating on a custom layout (or Maestro's own
-`Maestro.Report.DefaultLayout`), the `mix maestro.demo_report` task runs a
-handful of hand-built demo suites covering every reportable outcome
-(passing, several kinds of assertion failure, a schema-validation
-failure, an unregistered client, a client crash) and writes the result to
-a fixed path, `tmp/reports/showcase.html`, so you can just reopen the
-same file after every change instead of hunting for a `run_id`-named one:
+For iterating on a custom format (or Maestro's own
+`Maestro.Report.DefaultLayout`/`Maestro.Report.JUnit`), the
+`mix maestro.demo_report` task runs a handful of hand-built demo suites
+covering every reportable outcome (passing, several kinds of assertion
+failure, a schema-validation failure, an unregistered client, a client
+crash) and writes the result in every available format to fixed paths,
+`tmp/reports/showcase.<extension>` (`showcase.html`, `showcase.xml`, ...),
+so you can just reopen the same files after every change instead of
+hunting for `run_id`-named ones:
 
 ```bash
 mix maestro.demo_report
 ```
 
 ```bash
-mix maestro.demo_report --layout MyApp.Maestro.ReportLayout
+mix maestro.demo_report --format MyApp.Maestro.ReportLayout
 ```
 
 This is a developer tool, not a test nothing in it is asserted against.

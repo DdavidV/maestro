@@ -1,6 +1,8 @@
 defmodule Maestro.UtilTest do
   use ExUnit.Case, async: false
 
+  doctest Maestro.Util, only: [format_duration: 1]
+
   describe "host_priv_dir/0" do
     test "defaults to Maestro's own priv_dir when host_app is unset" do
       assert Maestro.Util.host_priv_dir() == :code.priv_dir(:maestro) |> to_string()

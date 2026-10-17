@@ -144,7 +144,7 @@ defmodule Maestro.Core.Runner.Store do
   def handle_call({:create, run_id, workspace_id, resolved_suites}, _from, state) do
     suites =
       Enum.map(resolved_suites, fn suite ->
-        %{id: suite.id, status: :pending, testcases: []}
+        %{id: suite.id, status: :pending, testcases: [], duration: nil}
       end)
 
     :ets.insert(@workspace_table, {run_id, workspace_id})

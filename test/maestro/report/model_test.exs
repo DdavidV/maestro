@@ -214,7 +214,31 @@ defmodule Maestro.Report.ModelTest do
         })
 
       model = Model.build(run_result)
-      assert model.summary == %{total: 3, ok: 2, error: 1}
+      assert %{total: 3, ok: 2, error: 1} = model.summary
+    end
+
+    test "carries durations through and totals finished suites' durations" do
+      run_result =
+        run_result(%{
+          suites: [
+            suite(%{
+              id: "s1",
+              duration: 1_500,
+              testcases: [
+                testcase(%{duration: 1_200, steps: [step(%{duration: 1_000})]})
+              ]
+            }),
+            suite(%{id: "s2", status: :pending, testcases: [], duration: nil})
+          ]
+        })
+
+      model = Model.build(run_result)
+      [s1, s2] = model.suites
+
+      assert s1.duration == 1_500
+      assert [%{duration: 1_200, steps: [%{duration: 1_000}]}] = s1.testcases
+      assert s2.duration == nil
+      assert model.summary.duration == 1_500
     end
 
     test "anchors are unique and HTML-id-safe for ids with spaces/punctuation" do

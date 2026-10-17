@@ -7,14 +7,16 @@ defmodule MaestroWeb.ReportComponents do
   use Phoenix.Component
 
   import MaestroWeb.CoreComponents, only: [icon: 1]
-  import MaestroWeb.RunComponents, only: [status_badge: 1, status_icon: 1, format_datetime: 1]
+
+  import MaestroWeb.RunComponents,
+    only: [status_badge: 1, status_icon: 1, format_datetime: 1, duration: 1]
 
   @doc "The report's top-of-page summary: run id, generated-at, status badge, pass/fail counts."
   attr :model, :map, required: true
 
   def report_header(assigns) do
     ~H"""
-    <div class="grid grid-cols-2 gap-px overflow-hidden rounded-box border border-base-300 bg-base-300 md:grid-cols-4">
+    <div class="grid grid-cols-2 gap-px overflow-hidden rounded-box border border-base-300 bg-base-300 md:grid-cols-5">
       <div class="bg-base-100 px-4 py-3.5">
         <div class="text-xs font-medium text-base-content/50">Status</div>
         <div class="mt-2"><.status_badge status={@model.status} /></div>
@@ -36,6 +38,12 @@ defmodule MaestroWeb.ReportComponents do
           @model.summary.error > 0 && "text-error"
         ]}>
           {@model.summary.error}
+        </div>
+      </div>
+      <div class="bg-base-100 px-4 py-3.5">
+        <div class="text-xs font-medium text-base-content/50">Duration</div>
+        <div class="mt-1 text-2xl font-semibold tabular-nums">
+          {Maestro.Util.format_duration(@model.summary.duration)}
         </div>
       </div>
     </div>
@@ -87,6 +95,7 @@ defmodule MaestroWeb.ReportComponents do
       <h2 class="flex items-center gap-3 border-b border-base-300 px-4 py-3">
         <.icon name="hero-beaker" class="size-4 shrink-0 text-base-content/40" />
         <span class="min-w-0 flex-1 truncate font-mono text-sm font-semibold">{@suite.id}</span>
+        <.duration value={@suite.duration} />
         <.status_badge status={@suite.status} />
       </h2>
 
@@ -108,7 +117,8 @@ defmodule MaestroWeb.ReportComponents do
     <div id={@testcase.anchor} class="scroll-mt-6 px-4 py-4">
       <h3 class="mb-3 flex items-center gap-2">
         <.status_icon status={@testcase.status} />
-        <span class="font-mono text-[0.8125rem] font-semibold">{@testcase.id}</span>
+        <span class="flex-1 font-mono text-[0.8125rem] font-semibold">{@testcase.id}</span>
+        <.duration value={@testcase.duration} />
       </h3>
 
       <div class="space-y-2">
@@ -136,6 +146,7 @@ defmodule MaestroWeb.ReportComponents do
         >
           {@step.client}
         </span>
+        <span class="ml-auto"><.duration value={@step.duration} /></span>
       </div>
 
       <.report_failure :if={@step.dispatch_error} failure={@step.dispatch_error} />

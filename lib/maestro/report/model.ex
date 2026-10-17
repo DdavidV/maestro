@@ -1,11 +1,11 @@
 defmodule Maestro.Report.Model do
   @moduledoc """
   Builds a presentation-ready tree from a `t:Maestro.run_result/0`, for a
-  `Maestro.Report.Layout` to render.
+  `Maestro.Report.Format` to render.
 
   Pure data assembly, no HTML/HEEx here deliberately: this is independently
   testable on its own, and is the actual contract a host's custom
-  `Maestro.Report.Layout` renders against, not the raw `run_result` (whose
+  `Maestro.Report.Format` renders against, not the raw `run_result` (whose
   `assertions`/`response` fields carry matcher- and client-internal structs
   a layout shouldn't need to know about).
 
@@ -15,6 +15,11 @@ defmodule Maestro.Report.Model do
   still gets a `t:step_model/0` entry (with `assertions: []`), never
   dropped, since a report should show every step that ran, not just the
   ones with something to assert.
+
+  Every step/testcase/suite model carries the run's `duration`
+  (wall-clock microseconds) through unchanged, `nil` where the run hasn't
+  produced one yet (a suite that hasn't finished), and `summary` adds the
+  total of every finished suite's `duration`.
   """
 
   alias Maestro.Assert.AssertionResult
@@ -55,24 +60,32 @@ defmodule Maestro.Report.Model do
           client: String.t() | nil,
           rendered: Client.rendered() | nil,
           dispatch_error: failure_row | nil,
-          assertions: [assertion_model]
+          assertions: [assertion_model],
+          duration: non_neg_integer | nil
         }
 
   @type testcase_model :: %{
           id: String.t(),
           anchor: String.t(),
           status: :ok | :error,
-          steps: [step_model]
+          steps: [step_model],
+          duration: non_neg_integer | nil
         }
 
   @type suite_model :: %{
           id: String.t(),
           anchor: String.t(),
           status: :pending | :running | :ok | :error,
-          testcases: [testcase_model]
+          testcases: [testcase_model],
+          duration: non_neg_integer | nil
         }
 
-  @type summary :: %{total: non_neg_integer, ok: non_neg_integer, error: non_neg_integer}
+  @type summary :: %{
+          total: non_neg_integer,
+          ok: non_neg_integer,
+          error: non_neg_integer,
+          duration: non_neg_integer
+        }
 
   @type t :: %{
           run_id: Maestro.run_id(),
@@ -107,7 +120,8 @@ defmodule Maestro.Report.Model do
   defp summarize(suites) do
     ok = Enum.count(suites, &(&1.status == :ok))
     error = Enum.count(suites, &(&1.status == :error))
-    %{total: length(suites), ok: ok, error: error}
+    duration = suites |> Enum.map(& &1.duration) |> Enum.reject(&is_nil/1) |> Enum.sum()
+    %{total: length(suites), ok: ok, error: error, duration: duration}
   end
 
   defp build_suite(suite) do
@@ -115,7 +129,8 @@ defmodule Maestro.Report.Model do
       id: suite.id,
       anchor: anchor("suite", suite.id),
       status: suite.status,
-      testcases: Enum.map(suite.testcases, &build_testcase(suite.id, &1))
+      testcases: Enum.map(suite.testcases, &build_testcase(suite.id, &1)),
+      duration: Map.get(suite, :duration)
     }
   end
 
@@ -124,7 +139,8 @@ defmodule Maestro.Report.Model do
       id: testcase.id,
       anchor: anchor("testcase", suite_id <> "/" <> testcase.id),
       status: testcase.status,
-      steps: Enum.map(testcase.steps, &build_step/1)
+      steps: Enum.map(testcase.steps, &build_step/1),
+      duration: Map.get(testcase, :duration)
     }
   end
 
@@ -135,7 +151,8 @@ defmodule Maestro.Report.Model do
       client: step.client,
       rendered: step.rendered,
       dispatch_error: dispatch_failure_row(error),
-      assertions: []
+      assertions: [],
+      duration: Map.get(step, :duration)
     }
   end
 
@@ -146,7 +163,8 @@ defmodule Maestro.Report.Model do
       client: step.client,
       rendered: step.rendered,
       dispatch_error: nil,
-      assertions: Enum.map(step.assertions, &build_assertion/1)
+      assertions: Enum.map(step.assertions, &build_assertion/1),
+      duration: Map.get(step, :duration)
     }
   end
 

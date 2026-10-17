@@ -19,9 +19,14 @@ defmodule Maestro.MixProject do
   def application do
     [
       mod: {Maestro.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools] ++ extra_applications(Mix.env())
     ]
   end
+
+  # `:xmerl` (shipped with OTP) parses the JUnit XML report in tests to prove
+  # it's well-formed; nothing outside tests needs it.
+  defp extra_applications(:test), do: [:xmerl]
+  defp extra_applications(_env), do: []
 
   def cli do
     [
